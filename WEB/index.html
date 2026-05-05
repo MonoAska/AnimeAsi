@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+    <script>
+        // 💡 瞬时预判：在页面加载任何东西之前，先从浏览器本地缓存读取主题
+        (function() {
+            const savedTheme = localStorage.getItem('app-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
+    <meta charset="UTF-8">
+    <style>
+        :root {
+            /* 使用系统预装的高级字体，完全不需要网络加载 */
+            --font-main: 'Segoe UI', 'SF Pro Display', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+        }
+        body { font-family: var(--font-main); }
+    </style>
+
+    </head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AnimeAsi v5.0 — 全能番剧中枢</title>
+<script src="lucide.min.js" defer></script>
+<style>
+  /* 💡 增加两侧间距，让卡片不再紧贴边缘 */
+.layout { 
+  position: relative; 
+  z-index: 1; 
+  max-width: 1280px; 
+  margin: 0 auto; 
+  padding: 0 40px; /* 从 24px 增加到 40px */
+}
+
+/* 💡 优化网格，增加间距并微调卡片大小 */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); /* 稍微调大一点最小宽度 */
+  gap: 24px; /* 间距从 16px 增加到 24px */
+  padding-bottom: 40px; /* 底部留白 */
+}
+  /* ── CSS Variables ── */
+  :root {
+    --bg:        #0d0f1a;
+    --bg2:       #141728;
+    --bg3:       #1a1f35;
+    --bg4:       #1e2440;
+    --border:    #252a45;
+    --border2:   #2e3558;
+    --accent:    #7c6dfa;
+    --accent2:   #9d91ff;
+    --accent-d:  #3d3680;
+    --pink:      #ff6b9d;
+    --pink-d:    #6b2040;
+    --txt1:      #e8e4ff;
+    --txt2:      #8f8ab5;
+    --txt3:      #4a4670;
+    --card-bg:   #141728;
+    --panel-bg:  #1a1f35;
+    --shadow:    0 4px 16px rgba(0,0,0,0.32);
+    --shadow-sm: 0 2px 12px rgba(0,0,0,0.3);
+    --r:         12px;
+    --r-sm:      8px;
+    --glow:      0 0 10px rgba(124,109,250,0.12);
+  }
+  [data-theme="light"] {
+    --bg:        #f4f3ff;
+    --bg2:       #ffffff;
+    --bg3:       #ede9ff;
+    --bg4:       #e0d9ff;
+    --border:    #d4cef7;
+    --border2:   #c0b8f0;
+    --accent:    #6b5cf0;
+    --accent2:   #8574f5;
+    --accent-d:  #c5beff;
+    --pink:      #e8507a;
+    --pink-d:    #ffd6e3;
+    --txt1:      #1a1630;
+    --txt2:      #5a5280;
+    --txt3:      #a09cc0;
+    --card-bg:   #ffffff;
+    --panel-bg:  #f0eeff;
+    --shadow:    0 8px 32px rgba(100,80,200,0.12);
+    --shadow-sm: 0 2px 12px rgba(100,80,200,0.08);
+    --glow:      0 0 20px rgba(107,92,240,0.15);
+  }
+
+  /* ── Reset & Base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--txt1);
+    min-height: 100vh;
+    transition: background 0.4s, color 0.4s;
+    overflow-x: hidden;
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent-d); }
+
+  /* ── Background Texture ── */
+
+
+  /* ── Layout ── */
+  .layout { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 0 24px; }
+
+  /* ══════════════════════════════════════
+     NAVBAR
+  ══════════════════════════════════════ */
+  .navbar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(13,15,26,0.85);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    transition: background 0.4s, border-color 0.4s;
+  }
+  [data-theme="light"] .navbar {
+    background: rgba(244,243,255,0.85);
+  }
+  .navbar-inner {
+    display: flex; align-items: center; gap: 16px;
+    height: 64px;
+    max-width: 1280px; margin: 0 auto; padding: 0 24px;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+    text-decoration: none; flex-shrink: 0;
+  }
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), var(--pink));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; color: #fff;
+    box-shadow: 0 4px 12px rgba(124,109,250,0.4);
+    transition: transform 0.3s, box-shadow 0.3s;
+  }
+  .logo:hover .logo-mark { transform: rotate(-6deg) scale(1.1); box-shadow: 0 6px 20px rgba(124,109,250,0.5); }
+  .logo-text {
+    font-size: 18px; font-weight: 700;
+    background: linear-gradient(135deg, var(--txt1) 40%, var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.3px;
+  }
+
+  /* Search */
+  .search-wrap {
+    flex: 1; max-width: 420px;
+    position: relative;
+  }
+  .search-wrap .icon-search {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--txt3); pointer-events: none;
+  }
+  .search-input {
+    width: 100%; height: 38px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    color: var(--txt1);
+    font-family: inherit; font-size: 13px;
+    padding: 0 16px 0 38px;
+    outline: none;
+    transition: border-color 0.25s, background 0.25s, box-shadow 0.25s;
+  }
+  .search-input::placeholder { color: var(--txt3); }
+  .search-input:focus {
+    border-color: var(--accent);
+    background: var(--bg4);
+    box-shadow: 0 0 0 3px rgba(124,109,250,0.15);
+  }
+
+  /* Nav actions */
+  .nav-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+  /* Theme toggle */
+  .theme-toggle {
+    width: 52px; height: 28px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    position: relative; cursor: pointer;
+    transition: background 0.3s, border-color 0.3s;
+    flex-shrink: 0;
+  }
+  .theme-toggle:hover { border-color: var(--accent); }
+  .theme-toggle-thumb {
+    width: 20px; height: 20px;
+    background: linear-gradient(135deg, var(--accent), var(--pink));
+    border-radius: 50%;
+    position: absolute; top: 3px; left: 3px;
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; box-shadow: 0 2px 8px rgba(124,109,250,0.4);
+  }
+  [data-theme="light"] .theme-toggle-thumb { transform: translateX(24px); }
+
+  .icon-btn {
+    width: 36px; height: 36px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--txt2);
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+  }
+  .icon-btn:hover {
+    background: var(--bg4); border-color: var(--accent);
+    color: var(--accent); box-shadow: var(--glow);
+  }
+
+  /* ══════════════════════════════════════
+     MAIN CONTENT
+  ══════════════════════════════════════ */
+  .main { padding: 28px 0 60px; }
+
+  /* Section header */
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-size: 13px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1.5px; color: var(--txt3);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::before {
+    content: '';
+    display: block; width: 3px; height: 14px;
+    background: linear-gradient(to bottom, var(--accent), var(--pink));
+    border-radius: 99px;
+  }
+
+  /* ── Weekly Schedule ── */
+  .schedule-wrap {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 16px 20px;
+    margin-bottom: 28px;
+    box-shadow: var(--shadow-sm);
+  }
+  .schedule-days {
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .day-btn {
+    flex: 1; min-width: 68px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 10px 8px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    cursor: pointer; color: var(--txt2);
+    transition: all 0.25s cubic-bezier(0.34,1.2,0.64,1);
+    position: relative; overflow: hidden;
+  }
+  .day-btn::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, var(--accent), var(--pink));
+    opacity: 0; transition: opacity 0.25s;
+  }
+  .day-btn:hover { border-color: var(--accent); color: var(--txt1); transform: translateY(-2px); box-shadow: var(--glow); }
+  .day-btn.active {
+    background: linear-gradient(135deg, var(--accent), #9b7ffc);
+    border-color: var(--accent); color: #fff;
+    box-shadow: 0 6px 20px rgba(124,109,250,0.4);
+    transform: translateY(-2px);
+  }
+  .day-btn.today:not(.active) {
+    border-color: var(--pink);
+    color: var(--pink);
+  }
+  .day-btn.today:not(.active) .day-date { color: var(--pink); }
+  .day-btn.active.today {
+    background: linear-gradient(135deg, var(--pink), #c84580);
+    border-color: var(--pink);
+    box-shadow: 0 6px 20px rgba(255,107,157,0.4);
+  }
+  .day-date { font-size: 11px; font-weight: 500; color: var(--txt3); transition: color 0.25s; }
+  .day-btn.active .day-date, .day-btn.today:not(.active) .day-date {}
+  .day-name { font-size: 13px; font-weight: 600; }
+  .today-dot {
+    width: 5px; height: 5px;
+    background: var(--pink);
+    border-radius: 50%;
+    position: absolute; bottom: 6px;
+  }
+  .day-btn:not(.today) .today-dot { display: none; }
+
+  /* ── Anime Count Badge ── */
+  .count-badge {
+    font-size: 11px; font-weight: 600;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 99px; padding: 2px 10px; color: var(--txt3);
+  }
+
+  /* ══════════════════════════════════════
+     CARD GRID
+  ══════════════════════════════════════ */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    gap: 16px;
+  }
+
+  .anime-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.3s cubic-bezier(0.34,1.2,0.64,1), box-shadow 0.3s, border-color 0.3s;
+    position: relative;
+  }
+  .anime-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.4), var(--glow);
+    border-color: var(--accent);
+  }
+
+  /* Poster */
+  .card-poster {
+    position: relative;
+    aspect-ratio: 120 / 162;
+    overflow: hidden;
+    background: var(--bg3);
+  }
+  .card-poster img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s ease;
+    display: block;
+  }
+  .anime-card:hover .card-poster img {transform: scale(1.03);}
+
+  /* Placeholder when no image */
+  .poster-placeholder {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; color: var(--txt3);
+    background: linear-gradient(135deg, var(--bg3), var(--bg4));
+    font-size: 11px;
+  }
+
+  /* Title overlay */
+  .card-overlay {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: linear-gradient(to top, rgba(8,8,18,0.95) 0%, rgba(8,8,18,0.5) 60%, transparent 100%);
+    padding: 24px 10px 10px;
+    transition: opacity 0.3s;
+  }
+  [data-theme="light"] .card-overlay {
+    background: linear-gradient(to top, rgba(20,16,50,0.9) 0%, rgba(20,16,50,0.4) 60%, transparent 100%);
+  }
+  .card-overlay-title {
+    font-size: 11px; font-weight: 600; color: #fff;
+    line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    line-clamp: text;
+    overflow: hidden;
+  }
+
+  /* Heart btn */
+  .heart-btn {
+    position: absolute; top: 8px; right: 8px;
+    width: 28px; height: 28px;
+    background: rgba(13,15,26,0.7);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--txt3);
+    transition: all 0.25s cubic-bezier(0.34,1.56,0.64,1);
+    backdrop-filter: blur(4px);
+  }
+  .heart-btn:hover { background: rgba(255,107,157,0.2); border-color: var(--pink); color: var(--pink); transform: scale(1.15); }
+  .heart-btn.liked { background: rgba(255,107,157,0.25); border-color: var(--pink); color: var(--pink); }
+  .heart-btn.liked svg { fill: var(--pink); }
+
+  /* New badge */
+  .new-badge {
+    position: absolute; top: 8px; left: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--pink));
+    color: #fff; font-size: 9px; font-weight: 700;
+    padding: 2px 7px; border-radius: 99px;
+    letter-spacing: 0.5px; text-transform: uppercase;
+  }
+
+  /* Card body (buttons) */
+  .card-body {
+    padding: 10px;
+    display: flex; gap: 6px;
+    border-top: 1px solid var(--border);
+    background: var(--card-bg);
+  }
+  .card-btn {
+    flex: 1; height: 32px;
+    border-radius: var(--r-sm);
+    font-family: inherit; font-size: 11px; font-weight: 600;
+    cursor: pointer; border: none; outline: none;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+    transition: all 0.2s;
+  }
+  .btn-detail {
+    background: var(--bg3);
+    color: var(--txt2);
+    border: 1px solid var(--border);
+  }
+  .btn-detail:hover { background: var(--bg4); color: var(--txt1); border-color: var(--border2); }
+  .btn-dl {
+    background: linear-gradient(135deg, var(--accent), #9b7ffc);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(124,109,250,0.3);
+  }
+  .btn-dl:hover { box-shadow: 0 6px 20px rgba(124,109,250,0.5); transform: translateY(-1px); filter: brightness(1.1); }
+
+  /* ══════════════════════════════════════
+     MODAL BASE
+  ══════════════════════════════════════ */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(5,5,15,0.75);
+    backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 16px;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+    transform: translateY(24px) scale(0.97);
+    transition: transform 0.35s cubic-bezier(0.34,1.2,0.64,1);
+    width: 100%; max-width: 520px;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .modal-overlay.open .modal { transform: translateY(0) scale(1); }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .modal-title { font-size: 16px; font-weight: 700; color: var(--txt1); }
+  .modal-subtitle { font-size: 12px; color: var(--txt3); margin-top: 2px; }
+  .modal-close {
+    width: 32px; height: 32px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 8px; cursor: pointer; color: var(--txt2);
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .modal-close:hover { background: var(--bg4); color: var(--txt1); border-color: var(--border2); }
+  .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+  .modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 10px; justify-content: flex-end;
+    flex-shrink: 0;
+  }
+
+  /* ══════════════════════════════════════
+     DOWNLOAD MODAL
+  ══════════════════════════════════════ */
+  .path-row {
+    display: flex; gap: 8px; margin-bottom: 20px;
+  }
+  .path-input {
+    flex: 1; height: 38px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: var(--r-sm); color: var(--txt1);
+    font-family: inherit; font-size: 12px; padding: 0 12px;
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    font-family: 'Courier New', monospace;
+  }
+  .path-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,109,250,0.12); }
+  .path-input::placeholder { color: var(--txt3); font-family: inherit; }
+
+  .btn-browse {
+    height: 38px; padding: 0 16px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: var(--r-sm); color: var(--txt2);
+    font-family: inherit; font-size: 12px; font-weight: 600;
+    cursor: pointer; white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .btn-browse:hover { background: var(--bg4); border-color: var(--border2); color: var(--txt1); }
+
+  .torrent-list-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--txt3); margin-bottom: 10px;
+  }
+  .torrent-list {
+    display: flex; flex-direction: column; gap: 6px;
+    max-height: 400px; overflow-y: auto;
+    padding-right: 4px;
+  }
+  .torrent-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .torrent-row:hover { border-color: var(--accent); background: var(--bg4); }
+  .torrent-icon { color: var(--accent); flex-shrink: 0; }
+  .torrent-info { flex: 1; min-width: 0; }
+  .torrent-name {
+    font-size: 12px; color: var(--txt1); font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .torrent-meta { font-size: 10px; color: var(--txt3); margin-top: 2px; }
+  .btn-push {
+    height: 28px; padding: 0 12px;
+    background: linear-gradient(135deg, var(--accent), #9b7ffc);
+    border: none; border-radius: 6px;
+    color: #fff; font-family: inherit; font-size: 11px; font-weight: 600;
+    cursor: pointer; flex-shrink: 0;
+    transition: all 0.2s;
+  }
+  .btn-push:hover { filter: brightness(1.15); transform: scale(1.05); box-shadow: 0 4px 12px rgba(124,109,250,0.4); }
+  .btn-push.pushed {
+    background: linear-gradient(135deg, #2e7d32, #388e3c);
+  }
+
+  /* ══════════════════════════════════════
+     SETTINGS PANEL
+  ══════════════════════════════════════ */
+  #settingsModal .modal { max-width: 480px; }
+  .settings-section { margin-bottom: 24px; }
+  .settings-section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.2px; color: var(--accent); margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .settings-section-title::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+  .form-row {
+    display: flex; flex-direction: column; gap: 6px;
+    margin-bottom: 12px;
+  }
+  .form-label {
+    font-size: 12px; font-weight: 500; color: var(--txt2);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .form-input {
+    width: 100%; height: 38px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: var(--r-sm); color: var(--txt1);
+    font-family: 'Courier New', monospace; font-size: 12px; padding: 0 12px;
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,109,250,0.12); }
+  .form-input::placeholder { color: var(--txt3); }
+
+  /* Toggle switch */
+  .toggle-wrap {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: var(--r-sm); margin-bottom: 8px;
+    transition: border-color 0.2s;
+  }
+  .toggle-wrap:hover { border-color: var(--border2); }
+  .toggle-label { font-size: 13px; color: var(--txt1); }
+  .toggle-sub { font-size: 11px; color: var(--txt3); margin-top: 1px; }
+  .toggle-switch {
+    width: 40px; height: 22px; flex-shrink: 0;
+    background: var(--bg4); border: 1px solid var(--border2);
+    border-radius: 99px; position: relative; cursor: pointer;
+    transition: background 0.3s, border-color 0.3s;
+  }
+  .toggle-switch.on { background: var(--accent); border-color: var(--accent); }
+  .toggle-switch::after {
+    content: '';
+    position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px;
+    background: #fff; border-radius: 50%;
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+  .toggle-switch.on::after { transform: translateX(18px); }
+
+  /* Buttons */
+  .btn-primary {
+    height: 38px; padding: 0 20px;
+    background: linear-gradient(135deg, var(--accent), #9b7ffc);
+    border: none; border-radius: var(--r-sm);
+    color: #fff; font-family: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+    box-shadow: 0 4px 12px rgba(124,109,250,0.3);
+  }
+  .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(124,109,250,0.4); }
+  .btn-ghost {
+    height: 38px; padding: 0 20px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: var(--r-sm); color: var(--txt2);
+    font-family: inherit; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn-ghost:hover { background: var(--bg4); border-color: var(--border2); color: var(--txt1); }
+
+  /* ── Notification toast ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 999;
+    background: var(--bg2); border: 1px solid var(--accent);
+    border-radius: var(--r); padding: 12px 18px;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: var(--shadow), var(--glow);
+    transform: translateY(80px); opacity: 0;
+    transition: all 0.4s cubic-bezier(0.34,1.2,0.64,1);
+    max-width: 320px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast-icon { color: var(--accent); flex-shrink: 0; }
+  .toast-text { font-size: 13px; color: var(--txt1); }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <a class="logo" href="#">
+      <div class="logo-mark">A</div>
+      <span class="logo-text">AnimeAsi</span>
+    </a>
+
+    <div class="search-wrap">
+      <svg class="icon-search" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path>
+      </svg>
+      <input class="search-input" id="globalSearch" type="text" placeholder="输入番剧名全网搜索..." onkeydown="if(event.keyCode==13) handleAnimeSearch()">
+    </div>
+
+    <div class="nav-actions">
+      <div class="icon-btn" id="favBtn" title="我的收藏">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path>
+        </svg>
+      </div>
+
+      <div class="theme-toggle" id="themeToggle" title="切换主题">
+        <div class="theme-toggle-thumb"><span id="themeIcon">🌙</span></div>
+      </div>
+      
+      <div class="icon-btn" id="settingsBtn" title="设置">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle>
+        </svg>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="layout main">
+  <div class="section-header">
+    <span class="section-title">放送时间表</span>
+    <span class="count-badge" id="countBadge">同步中...</span>
+  </div>
+
+  <div class="schedule-wrap">
+    <div class="schedule-days" id="scheduleDays"></div>
+  </div>
+
+  <div class="section-header">
+    <span class="section-title" id="gridTitle">今日放送</span>
+  </div>
+  <div class="card-grid" id="cardGrid"></div>
+</div>
+
+<div class="modal-overlay" id="animeSearchModal">
+  <div class="modal" style="max-width: 800px;">
+    <div class="modal-header">
+      <div><div class="modal-title" id="animeSearchTitle">番剧搜索结果</div><div class="modal-subtitle">从 Bangumi 库检索</div></div>
+      <div class="modal-close" onclick="closeModal('animeSearchModal')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+      </div>
+    </div>
+    <div class="modal-body" style="background: var(--bg);">
+      <div class="card-grid" id="animeSearchGrid"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dlModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="dlModalTitle">选择资源</div>
+        <div class="modal-subtitle">正在检索全网种子...</div>
+      </div>
+      <div class="modal-close" onclick="closeModal('dlModal')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>
+</svg></div>
+    </div>
+    <div class="modal-body">
+      <div class="path-row">
+        <input class="path-input" id="dlPath" type="text" placeholder="保存路径...">
+        <button class="btn-browse" onclick="handleBrowseFolder()">浏览</button>
+      </div>
+      <div class="torrent-list-label">搜索结果</div>
+      <div class="torrent-list" id="torrentList"></div>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="favModal">
+  <div class="modal" style="max-width: 800px;">
+    <div class="modal-header">
+      <div><div class="modal-title">我的收藏</div><div class="modal-subtitle">Anime Library</div></div>
+      <div class="modal-close" onclick="closeModal('favModal')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>
+</svg></div>
+    </div>
+    <div class="modal-body" style="background: var(--bg);">
+      <div class="card-grid" id="favGrid"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">应用设置</div>
+        <div class="modal-subtitle">配置你的追番环境</div>
+      </div>
+      <div class="modal-close" onclick="closeModal('settingsModal')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>
+</svg>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      
+      <div class="settings-section">
+        <div class="settings-section-title">本地动漫库</div>
+        <div class="form-row">
+          <label class="form-label">根目录</label>
+          <div class="path-row" style="margin-bottom: 0;">
+            <input class="form-input" id="set_anime_path" type="text" style="height: 38px;">
+            <button class="btn-browse" onclick="handleBrowseFolder('set_anime_path')">浏览</button>
+          </div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">存储与缓存</div>
+        <div class="form-row" style="flex-direction: row; justify-content: space-between; align-items: center; background: var(--bg3); padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--r-sm);">
+          <div>
+            <div class="toggle-label" style="font-weight: 500;">封面图片缓存</div>
+            <div class="toggle-sub" id="cacheSizeText" style="margin-top: 4px; font-family: monospace;">计算中...</div>
+          </div>
+          <button class="btn-ghost" style="height: 32px; padding: 0 16px;" onclick="handleClearCache()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+            清理
+          </button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">下载器 (qBittorrent)</div>
+        <div class="form-row">
+          <label class="form-label">WebUI 地址</label>
+          <input class="form-input" id="set_qbt_host" type="text" placeholder="http://127.0.0.1:8080">
+        </div>
+        <div class="form-row">
+          <label class="form-label">密码</label>
+          <input class="form-input" id="set_qbt_pass" type="password">
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">RSS 订阅源</div>
+        <div id="rssSourceList"></div>
+        <div style="display: flex; gap: 8px; margin-top: 10px;">
+          <button class="btn-ghost" style="height: 32px; padding: 0 14px;" onclick="addRssSource()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
+            添加订阅源
+          </button>
+          <div style="position: relative; display: inline-block;">
+            <button class="btn-ghost" style="height: 32px; padding: 0 14px;" onclick="togglePresetMenu()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><path d="m9 20 7-7-7-7"></path></svg>
+              预设模板
+            </button>
+            <div id="presetMenu" style="display: none; position: absolute; top: 100%; left: 0; margin-top: 4px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r-sm); box-shadow: var(--shadow); z-index: 50; min-width: 200px; overflow: hidden;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">内容过滤</div>
+        <div class="toggle-wrap">
+          <div>
+            <div class="toggle-label">只显示日本动画</div>
+            <div class="toggle-sub">自动过滤国漫/欧美动画 (基于标题假名识别)</div>
+          </div>
+          <div class="toggle-switch" id="set_only_jp" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">网络 &amp; 代理</div>
+        <div class="toggle-wrap">
+          <div>
+            <div class="toggle-label">启用本地代理</div>
+            <div class="toggle-sub">通过代理访问，解决数据获取失败</div>
+          </div>
+          <div class="toggle-switch" id="set_use_proxy" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="form-row">
+          <label class="form-label">代理地址</label>
+          <input class="form-input" id="set_proxy_address" type="text" placeholder="127.0.0.1:7890">
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" onclick="saveAppSettings()">保存并刷新</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <i data-lucide="check-circle" class="toast-icon" id="toastIcon" width="18" height="18"></i>
+  <span class="toast-text" id="toastText">操作成功</span>
+</div>
+
+<script>
+// ================= 1. 核心变量 =================
+// 判断字符串中是否包含日语假名（平假名/片假名）
+const isJapanese = (str) => /[\u3040-\u309F\u30A0-\u30FF]/.test(str);
+let globalBgmData = [];
+let globalFavorites = [];
+let globalRssSources = [];
+let activeDay = (new Date().getDay() + 6) % 7;
+const TODAY_IDX = activeDay;
+
+function safeCreateIcons() {
+    try {
+        if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+            lucide.createIcons(); 
+        }
+    } catch (e) {
+        console.warn("图标库渲染跳过:", e);
+    }
+}
+
+// ================= 2. 初始化逻辑 =================
+document.addEventListener('DOMContentLoaded', () => {
+    const sBtn = document.getElementById('settingsBtn');
+    if (sBtn) {
+        sBtn.onclick = () => {
+            openModal('settingsModal');
+        };
+    }
+    
+    // 💡 修复 1：正确获取收藏按钮元素
+    const favBtn = document.getElementById('favBtn');
+    if (favBtn) {
+        favBtn.onclick = () => {
+            renderFavGrid(); // 打开前重新渲染一次
+            openModal('favModal');
+        };
+    }
+    requestAnimationFrame(() => {
+    safeCreateIcons();
+});
+});
+
+window.addEventListener('pywebviewready', async () => {
+    try {
+        const [config, favs] = await Promise.all([
+            pywebview.api.get_init_config(),
+            pywebview.api.get_favorites()
+        ]);
+        
+        // 💡 最终校准：以 Python 的 config.json 为准
+        const finalTheme = config.theme || 'dark';
+        document.documentElement.setAttribute('data-theme', finalTheme);
+        // 同步更新本地缓存，供下次启动“瞬时预判”使用
+        localStorage.setItem('app-theme', finalTheme);
+        
+        const iconEl = document.getElementById('themeIcon');
+        if(iconEl) iconEl.textContent = finalTheme === 'light' ? '☀️' : '🌙';
+
+        globalFavorites = favs || [];
+        fillSettings(config);
+        if (!config.local_anime_path) openModal('settingsModal');
+        refreshAllData();
+    } catch (e) {
+        console.error("初始化失败:", e);
+    }
+});
+
+// ================= 3. 数据获取与渲染 =================
+async function refreshAllData() {
+    try {
+        // 1. 安全读取本地缓存和上次更新的时间戳
+        const rawLocalData = localStorage.getItem('last_bgm_data');
+        const lastUpdate = localStorage.getItem('last_bgm_update_time');
+        const now = new Date().getTime();
+        let hasValidCache = false;
+
+        // 2. 瞬时渲染逻辑：如果有缓存，且距离上次更新不超过 7 天
+        if (rawLocalData && lastUpdate) {
+            const timeDiff = now - parseInt(lastUpdate);
+            if (timeDiff < 604800000) { // 7天的毫秒数
+                const localData = JSON.parse(rawLocalData);
+                // 瞬间赋值并渲染 UI，实现“秒开”
+                globalBgmData = localData;
+                buildScheduleButtons();
+                renderAnimeGrid();
+                hasValidCache = true; 
+            }
+        }
+
+        // 3. UI 反馈：如果没有秒开，才显示加载动画
+        if (!hasValidCache) {
+            showToast('同步 Bangumi 数据...', 'loader');
+        }
+
+        // 4. 异步请求最新数据（无论有没有缓存，这步都会在后台静默执行）
+        setTimeout(async () => {
+    const freshData = await pywebview.api.get_bgm_data();
+
+    if (freshData && freshData.length > 0) {
+        globalBgmData = freshData;
+        buildScheduleButtons();
+        renderAnimeGrid();
+
+        localStorage.setItem('last_bgm_data', JSON.stringify(freshData));
+        localStorage.setItem('last_bgm_update_time', now.toString());
+
+        if (!hasValidCache) {
+            showToast('时刻表已更新');
+        }
+    }
+}, 100);
+    } catch (e) {
+        console.error("加载番剧数据时发生错误:", e);
+        showToast('获取数据失败', 'alert-circle');
+    }
+}
+
+// 自动计算本周的日期 (MM-DD)
+const WEEK_DATES = (() => {
+    const now = new Date();
+    const mon = new Date(now); 
+    mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    return Array.from({length: 7}, (_, i) => {
+        const d = new Date(mon);
+        d.setDate(mon.getDate() + i);
+        return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    });
+})();
+
+function buildScheduleButtons() {
+    const wrap = document.getElementById('scheduleDays');
+    if(!wrap) return;
+    wrap.innerHTML = '';
+    const dayNames = ["周一","周二","周三","周四","周五","周六","周日"];
+    
+    dayNames.forEach((name, i) => {
+        const btn = document.createElement('div');
+        btn.className = `day-btn${i===activeDay?' active':''}${i===TODAY_IDX?' today':''}`;
+        
+        btn.innerHTML = `
+            <span class="day-date">${WEEK_DATES[i]}</span>
+            <span class="day-name">${name}</span>
+            ${i===TODAY_IDX ? '<span class="today-dot"></span>' : ''}
+        `;
+        
+        btn.onclick = () => {
+            activeDay = i;
+            buildScheduleButtons();
+            renderAnimeGrid();
+        };
+        wrap.appendChild(btn);
+    });
+}
+
+// 💡 修复 2：去掉了重复套娃的 function 声明
+async function renderAnimeGrid() {
+    const grid = document.getElementById('cardGrid');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+
+    const config = await pywebview.api.get_init_config();
+    let items = globalBgmData[activeDay]?.items || [];
+
+    if (config.only_show_japanese) {
+        items = items.filter(item => isJapanese(item.name));
+    }
+
+    document.getElementById('countBadge').textContent = `${items.length} 部`;
+
+    // ⭐ 关键优化
+    const fragment = document.createDocumentFragment();
+
+    items.forEach(item => {
+        const name = item.name_cn || item.name;
+        const img = item.images?.common || '';
+
+        const isFav = globalFavorites.some(f => f.name === name);
+        const heartClass = isFav ? 'heart-btn liked' : 'heart-btn';
+
+        const card = document.createElement('div');
+        card.className = 'anime-card';
+
+        card.innerHTML = `
+            <div class="card-poster">
+                <img
+                    loading="lazy"
+                    decoding="async"
+                    src="${img}"
+                    onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'"
+                >
+
+                <div class="card-overlay">
+                    <div class="card-overlay-title">${name}</div>
+                </div>
+
+                <div class="${heartClass}" onclick="handleToggleFav(event, '${name}', '${img}', '${item.url}', this)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                    </svg>
+                </div>
+            </div>
+
+            <div class="card-body">
+                <button class="card-btn btn-detail" onclick="window.open('${item.url}')">🌐 详情</button>
+                <button class="card-btn btn-dl" onclick="handleSearch('${name}')">⬇️ 下载</button>
+            </div>
+        `;
+
+        fragment.appendChild(card);
+    });
+
+    // ⭐ 一次性插入 DOM
+    grid.appendChild(fragment);
+
+    requestAnimationFrame(() => {
+        safeCreateIcons();
+    });
+}
+
+// 处理爱心点击逻辑
+async function handleToggleFav(event, name, img, url, btnElement) {
+    event.stopPropagation(); // 阻止点击穿透
+    
+    const animeData = { name, img, url };
+    const res = await pywebview.api.toggle_favorite(animeData);
+    
+    if (res.status === 'success') {
+        if (res.is_favorite) {
+            btnElement.classList.add('liked');
+            globalFavorites.push(animeData); 
+            showToast('已加入收藏 ♥');
+        } else {
+            btnElement.classList.remove('liked');
+            globalFavorites = globalFavorites.filter(f => f.name !== name);
+            showToast('已取消收藏');
+        }
+    }
+}
+
+// 渲染收藏库弹窗
+function renderFavGrid() {
+    const grid = document.getElementById('favGrid');
+    if(!grid) return;
+    grid.innerHTML = '';
+    
+    if (globalFavorites.length === 0) {
+        grid.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>收藏库空空如也，快去添加吧~</p></div>`;
+        return;
+    }
+
+    globalFavorites.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'anime-card';
+        card.innerHTML = `
+            <div class="card-poster">
+                <img src="${item.img}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
+                <div class="card-overlay"><div class="card-overlay-title">${item.name}</div></div>
+                <div class="heart-btn liked" onclick="handleToggleFav(event, '${item.name}', '${item.img}', '${item.url}', this); renderFavGrid(); renderAnimeGrid();">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                </div>
+            </div>
+            <div class="card-body">
+                <button class="card-btn btn-detail" onclick="window.open('${item.url}')">🌐 详情</button>
+                <button class="card-btn btn-dl" onclick="handleSearch('${item.name}')">⬇️ 下载</button>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+}
+// ================= 新增：缓存管理逻辑 =================
+async function updateCacheSize() {
+    const size = await pywebview.api.get_cache_size();
+    const el = document.getElementById('cacheSizeText');
+    if (el) el.textContent = `当前占用空间: ${size}`;
+}
+
+async function handleClearCache() {
+    showToast('正在清理缓存碎片...');
+    const res = await pywebview.api.clear_cache();
+    if (res.status === 'success') {
+        setTimeout(() => {
+            showToast('清理完成，释放硬盘空间！');
+            updateCacheSize(); // 重新计算大小，应该会变成 0.0 MB
+        }, 500); // 加一点点延迟，让动画显得更真实
+    }
+}
+// ================= 4. 功能交互逻辑 =================
+async function handleSearch(keyword) {
+    const searchVal = keyword || document.getElementById('globalSearch').value;
+    if (!searchVal) return;
+
+    showToast(`检索资源: ${searchVal}...`, 'search');
+    try {
+        const res = await pywebview.api.search_torrents(searchVal);
+        if (res.status === 'success') {
+            renderTorrentList(searchVal, res.results);
+            openModal('dlModal');
+        } else {
+            showToast('未找到相关资源', 'alert-circle');
+        }
+    } catch (e) {
+        showToast('搜索出错', 'x-circle');
+    }
+}
+
+function renderTorrentList(animeName, results) {
+    const list = document.getElementById('torrentList');
+    document.getElementById('dlModalTitle').textContent = animeName;
+    if(!list) return;
+    list.innerHTML = '';
+    
+    pywebview.api.get_init_config().then(conf => {
+        const safeName = animeName.replace(/[\\/:*?"<>|]/g, '_');
+        document.getElementById('dlPath').value = (conf.local_anime_path || "E:\\ANIME") + "\\" + safeName;
+    });
+
+    results.forEach(t => {
+        const row = document.createElement('div');
+        row.className = 'torrent-row';
+        row.innerHTML = `
+            <div class="torrent-info"><div class="torrent-name" title="${t.title}">${t.title}</div></div>
+            <button class="btn-push" onclick="executePush('${t.url}', '${animeName}', this)">推送</button>
+        `;
+        list.appendChild(row);
+    });
+}
+
+async function executePush(url, name, btn) {
+    const path = document.getElementById('dlPath').value;
+    btn.disabled = true;
+    btn.textContent = '传送中...';
+    
+    try {
+        const res = await pywebview.api.push_download(url, name, path);
+        if (res.status === 'success') {
+            btn.textContent = '✓ 已发送';
+            btn.style.background = '#2e7d32';
+            showToast('已推送到 qBittorrent');
+        } else {
+            btn.disabled = false;
+            btn.textContent = '重试';
+            showToast('失败: ' + res.message, 'alert-triangle');
+        }
+    } catch (e) {
+        showToast('连接失败', 'x-circle');
+    }
+}
+
+async function handleBrowseFolder(targetId) {
+    const path = await pywebview.api.select_folder();
+    if (path) {
+        const target = targetId || 'dlPath';
+        const inputEl = document.getElementById(target);
+        if (inputEl) {
+            inputEl.value = path;
+        }
+    }
+}
+
+// ================= 新增：番剧搜索逻辑 =================
+
+// 1. 发送请求给 Python 搜番剧
+async function handleAnimeSearch() {
+    const searchVal = document.getElementById('globalSearch').value;
+    if (!searchVal) return;
+
+    showToast(`检索番剧库: ${searchVal}...`, 'search');
+    try {
+        // 调用我们刚刚写好的 Python 函数
+        const res = await pywebview.api.search_anime(searchVal);
+        if (res.status === 'success' && res.results.length > 0) {
+            renderAnimeSearchGrid(searchVal, res.results);
+            openModal('animeSearchModal'); // 弹出番剧网格窗口
+        } else {
+            showToast('未找到相关番剧，尝试切换代理', 'alert-circle');
+        }
+    } catch (e) {
+        showToast('搜索请求失败', 'x-circle');
+    }
+}
+
+// 2. 将搜到的番剧画成精美的卡片
+function renderAnimeSearchGrid(keyword, items) {
+    const grid = document.getElementById('animeSearchGrid');
+    document.getElementById('animeSearchTitle').textContent = `"${keyword}" 的搜索结果`;
+    if(!grid) return;
+    grid.innerHTML = '';
+
+    items.slice(0, 18).forEach(item => {
+        const name = item.name_cn || item.name;
+        // 如果搜到的没有图片，给个占位符
+        const img = item.images?.large || item.images?.common || 'https://via.placeholder.com/120x162?text=No+Cover';
+        const url = item.url || `https://bgm.tv/subject/${item.id}`;
+        
+        // 检查是不是已经收藏了
+        const isFav = globalFavorites.some(f => f.name === name);
+        const heartClass = isFav ? 'heart-btn liked' : 'heart-btn';
+
+        const card = document.createElement('div');
+        card.className = 'anime-card';
+        card.innerHTML = `
+            <div class="card-poster">
+                <img loading="lazy" decoding="async" src="${img}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
+                <div class="card-overlay"><div class="card-overlay-title">${name}</div></div>
+                <div class="${heartClass}" onclick="handleToggleFav(event, '${name}', '${img}', '${url}', this)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                </div>
+            </div>
+            <div class="card-body">
+                <button class="card-btn btn-detail" onclick="window.open('${url}')">🌐 详情</button>
+                <button class="card-btn btn-dl" onclick="handleSearch('${name}')">⬇️ 下载</button>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+function fillSettings(c) {
+    const p = document.getElementById('set_anime_path');
+    const h = document.getElementById('set_qbt_host');
+    const ps = document.getElementById('set_qbt_pass');
+    const proxyToggle = document.getElementById('set_use_proxy');
+    const proxyAddr = document.getElementById('set_proxy_address');
+    const jpToggle = document.getElementById('set_only_jp');
+
+    if(p) p.value = c.local_anime_path || '';
+    if(h) h.value = c.qbt_host || '';
+    if(ps) ps.value = c.qbt_password || '';
+    
+    if(proxyToggle) {
+        if(c.use_proxy) proxyToggle.classList.add('on');
+        else proxyToggle.classList.remove('on');
+    }
+    if(proxyAddr) proxyAddr.value = c.proxy_address || '127.0.0.1:7890';
+    
+    if(jpToggle) {
+        if(c.only_show_japanese) jpToggle.classList.add('on');
+        else jpToggle.classList.remove('on');
+    }
+
+    // ─── 加载 RSS 订阅源 ───────────────────────────
+    globalRssSources = c.rss_sources || [];
+    renderRssSources();
+}
+
+async function saveAppSettings() {
+    const newConf = {
+        local_anime_path: document.getElementById('set_anime_path').value,
+        qbt_host: document.getElementById('set_qbt_host').value,
+        qbt_password: document.getElementById('set_qbt_pass').value,
+        use_proxy: document.getElementById('set_use_proxy')?.classList.contains('on') || false,
+        proxy_address: document.getElementById('set_proxy_address')?.value || '127.0.0.1:7890',
+        only_show_japanese: document.getElementById('set_only_jp')?.classList.contains('on') || false
+    };
+    
+    // 读取当前 RSS 源 UI 数据
+    collectRssSourcesFromUI();
+
+    await pywebview.api.save_config(newConf);
+    await pywebview.api.save_rss_sources(globalRssSources);
+    closeModal('settingsModal');
+    showToast('设置已保存');
+    refreshAllData();
+}
+
+// 模态框控制
+// 修改现有的 openModal 函数
+function openModal(id) { 
+    const m = document.getElementById(id);
+    if(m) m.classList.add('open'); 
+    
+    // 💡 新增：如果是打开设置弹窗，顺便计算一下硬盘空间
+    if(id === 'settingsModal') {
+        updateCacheSize();
+    }
+}
+function closeModal(id) { 
+    const m = document.getElementById(id);
+    if(m) m.classList.remove('open'); 
+}
+
+// Toast 提醒
+let toastTimer;
+function showToast(msg, icon='check-circle') {
+  const toast = document.getElementById('toast');
+  const txt = document.getElementById('toastText');
+  if(txt) txt.textContent = msg;
+  if(toast) {
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+}
+
+// ─── RSS 订阅源管理 ──────────────────────────────────
+
+function renderRssSources() {
+    const list = document.getElementById('rssSourceList');
+    if (!list) return;
+    list.innerHTML = '';
+
+    globalRssSources.forEach((src, i) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display: flex; flex-direction: column; gap: 6px; padding: 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r-sm); margin-bottom: 8px; transition: border-color 0.2s;';
+        row.dataset.index = i;
+
+        row.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <input class="form-input" type="text" value="${escHtml(src.name)}" placeholder="订阅源名称" data-field="name" style="flex: 0 0 120px; height: 32px; font-size: 12px; font-family: inherit;">
+                <input class="form-input" type="text" value="${escHtml(src.url_template)}" placeholder="https://example.com/rss?q={keyword}" data-field="url" style="flex: 1; height: 32px; font-size: 12px;">
+                <div class="toggle-switch ${src.enabled ? 'on' : ''}" onclick="this.classList.toggle('on')" title="启用/禁用" style="flex-shrink: 0;"></div>
+                <button onclick="removeRssSource(${i})" style="width: 28px; height: 28px; background: var(--pink-d); border: 1px solid var(--pink); border-radius: 6px; color: var(--pink); cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; font-weight: 700; transition: all 0.2s;">✕</button>
+            </div>
+            <div style="font-size: 10px; color: var(--txt3); padding-left: 4px;">
+                提示: 用 <code style="background: var(--bg4); padding: 1px 4px; border-radius: 3px;">{keyword}</code> 表示搜索关键词的位置
+            </div>
+        `;
+        list.appendChild(row);
+    });
+
+    if (globalRssSources.length === 0) {
+        list.innerHTML = '<div style="padding: 16px; text-align: center; color: var(--txt3); font-size: 13px;">暂无订阅源，点击上方按钮添加</div>';
+    }
+}
+
+function escHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function addRssSource(name, url) {
+    globalRssSources.push({
+        name: name || '新订阅源',
+        url_template: url || 'https://example.com/rss?q={keyword}',
+        enabled: true,
+    });
+    renderRssSources();
+}
+
+function removeRssSource(index) {
+    globalRssSources.splice(index, 1);
+    renderRssSources();
+}
+
+function collectRssSourcesFromUI() {
+    const list = document.getElementById('rssSourceList');
+    if (!list) return;
+    const rows = list.children;
+    globalRssSources = [];
+    for (const row of rows) {
+        const inputs = row.querySelectorAll('input[data-field]');
+        const toggle = row.querySelector('.toggle-switch');
+        if (inputs.length < 2) continue;
+        globalRssSources.push({
+            name: inputs[0].value || '未命名',
+            url_template: inputs[1].value || '',
+            enabled: toggle ? toggle.classList.contains('on') : false,
+        });
+    }
+}
+
+async function togglePresetMenu() {
+    const menu = document.getElementById('presetMenu');
+    if (menu.style.display === 'block') {
+        menu.style.display = 'none';
+        return;
+    }
+    menu.innerHTML = '<div style="padding: 8px 12px; color: var(--txt3); font-size: 12px;">加载中...</div>';
+    menu.style.display = 'block';
+
+    try {
+        const presets = await pywebview.api.get_rss_presets();
+        menu.innerHTML = presets.map((p, i) =>
+            `<div onclick="applyPreset(${i})" style="padding: 8px 14px; cursor: pointer; font-size: 13px; color: var(--txt1); transition: background 0.15s; border-bottom: ${i < presets.length - 1 ? '1px solid var(--border)' : 'none'}"
+                  onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+                <span style="font-weight: 600;">${escHtml(p.name)}</span>
+                <span style="color: var(--txt3); font-size: 11px; margin-left: 8px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escHtml(p.url_template)}</span>
+            </div>`
+        ).join('');
+    } catch (e) {
+        menu.innerHTML = '<div style="padding: 8px 12px; color: var(--pink); font-size: 12px;">加载失败</div>';
+    }
+}
+
+function applyPreset(index) {
+    document.getElementById('presetMenu').style.display = 'none';
+    pywebview.api.get_rss_presets().then(presets => {
+        if (index < presets.length) {
+            addRssSource(presets[index].name, presets[index].url_template);
+        }
+    });
+}
+
+// 点其他地方关闭预设菜单
+document.addEventListener('click', function(e) {
+    const menu = document.getElementById('presetMenu');
+    if (menu && !e.target.closest('#presetMenu') && !e.target.closest('[onclick="togglePresetMenu()"]')) {
+        menu.style.display = 'none';
+    }
+});
+
+// 设置弹窗打开时刷新 RSS 源列表
+const origOpenModal = openModal;
+openModal = function(id) {
+    origOpenModal(id);
+    if (id === 'settingsModal') {
+        updateCacheSize();
+        // 从最新配置重新加载 RSS 源
+        pywebview.api.get_init_config().then(c => {
+            globalRssSources = c.rss_sources || [];
+            renderRssSources();
+        });
+    }
+};
+
+// 主题切换
+// 💡 找到这个 ID 对应的逻辑进行替换
+const themeBtn = document.getElementById('themeToggle');
+
+if(themeBtn) {
+    themeBtn.onclick = async () => {
+        const html = document.documentElement;
+        // 1. 判断当前状态
+        const isDark = html.getAttribute('data-theme') === 'dark';
+        const newTheme = isDark ? 'light' : 'dark';
+        
+        // 2. 瞬间切换前端 UI 属性
+        html.setAttribute('data-theme', newTheme);
+        
+        // 3. 同步更新图标（太阳/月亮）
+        const iconEl = document.getElementById('themeIcon');
+        if(iconEl) {
+            iconEl.textContent = isDark ? '☀️' : '🌙';
+        }
+        
+        // 4. 【核心升级】瞬时更新浏览器本地存储，供下次启动时脚本“预判”
+        localStorage.setItem('app-theme', newTheme);
+        
+        // 5. 【核心升级】调用 Python 接口，永久写入 config.json
+        try {
+            await pywebview.api.save_config({ "theme": newTheme });
+        } catch (e) {
+            console.error("主题配置同步至后端失败:", e);
+        }
+    };
+}
+</script>
+</body>
+</html>
