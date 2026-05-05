@@ -9,7 +9,8 @@ import requests
 import threading
 from tkinter import filedialog, Tk
 from bottle import Bottle, static_file
-import downloader 
+import downloader
+import local_manager 
 
 # ================= 1. 路径与环境核心逻辑 =================
 
@@ -197,11 +198,21 @@ class AnimeProAPI:
 
     def get_favorites(self):
         if os.path.exists(self.fav_path):
-            with open(self.fav_path, 'r', encoding='utf-8') as f:
-                try: return json.load(f)
-                except Exception as e:
-                    logging.error("get_favorites: failed to parse favorites.json: %s", e)
-                    return []
+            try:
+                with open(self.fav_path, 'r', encoding='utf-8') as f:
+                    favs = json.load(f)
+                # 将收藏中的 Bangumi 远程图片 URL 替换为本地缓存路径
+                for item in favs:
+                    img = item.get("img", "")
+                    if img and img.startswith("http"):
+                        filename = img.split("/")[-1]
+                        local_path = os.path.join(self.cache_path, filename)
+                        if os.path.exists(local_path) and os.path.getsize(local_path) > 20480:
+                            item["img"] = f"/{filename}"
+                return favs
+            except Exception as e:
+                logging.error("get_favorites: failed to parse favorites.json: %s", e)
+                return []
         return []
 
     def toggle_favorite(self, anime_data):
@@ -257,12 +268,23 @@ class AnimeProAPI:
             json.dump(self.config, f, ensure_ascii=False, indent=4)
         return {"status": "success"}
 
+    # ─── 本地动画管理 ────────────────────────────────
+
+    def get_anime_episodes(self, anime_name):
+        return local_manager.get_anime_episodes(anime_name, self.config.get("local_anime_path", ""))
+
+    def play_episode(self, anime_name, episode, file_path):
+        return local_manager.play_episode(anime_name, episode, file_path)
+
+    def get_watch_history(self):
+        return local_manager.get_watch_history()
+
 # ================= 4. 启动容器 =================
 if __name__ == '__main__':
     api = AnimeProAPI()
     
     window = webview.create_window(
-        'AnimeAsi v5.0', 
+        'AnimeAsi v6.0', 
         server, 
         js_api=api, 
         width=1100, 
