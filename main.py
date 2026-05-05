@@ -3,6 +3,7 @@ import ctypes
 import sys
 import os
 import json
+import logging
 import urllib.parse
 import requests
 import threading
@@ -29,11 +30,19 @@ WEB_DIR = os.path.join(RUNTIME_DIR, "web")
 os.chdir(EXE_DIR)
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+LOG_FILE = os.path.join(EXE_DIR, "error.log")
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.ERROR,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
 try:
     myappid = 'mycompany.animeasi.v5'
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-except:
-    pass
+except Exception as e:
+    logging.error("SetCurrentProcessExplicitAppUserModelID failed: %s", e)
 
 # ================= 2. 建立本地虚拟服务器 =================
 server = Bottle()
@@ -95,7 +104,8 @@ class AnimeProAPI:
             try:
                 with open(self.config_path, 'r', encoding='utf-8') as f:
                     return {**default_config, **json.load(f)}
-            except: pass
+            except Exception as e:
+                logging.error("load_config: failed to read config.json: %s", e)
         
         with open(self.config_path, 'w', encoding='utf-8') as f:
             json.dump(default_config, f, ensure_ascii=False, indent=4)
@@ -115,7 +125,8 @@ class AnimeProAPI:
             if resp.status_code == 200:
                 with open(local_path, 'wb') as f:
                     f.write(resp.content)
-        except: pass
+        except Exception as e:
+            logging.error("_download_img failed: url=%s, error=%s", url, e)
 
     def _process_image_urls(self, items):
         for item in items:
@@ -141,7 +152,8 @@ class AnimeProAPI:
     def clear_cache(self):
         for f in os.listdir(self.cache_path):
             try: os.remove(os.path.join(self.cache_path, f))
-            except: pass
+            except Exception as e:
+                logging.error("clear_cache: failed to remove %s: %s", f, e)
         return {"status": "success"}
 
     def _load_local_data_cache(self):
@@ -150,7 +162,8 @@ class AnimeProAPI:
             try:
                 with open(self.data_cache_path, 'r', encoding='utf-8') as f:
                     return json.load(f)
-            except: pass
+            except Exception as e:
+                logging.error("_load_local_data_cache: failed to load cache: %s", e)
         return []
 
     def _preload_bgm(self):
@@ -174,7 +187,8 @@ class AnimeProAPI:
             self.cached_bgm_data = data
             with open(self.data_cache_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False)
-        except:
+        except Exception as e:
+            logging.error("_preload_bgm: failed to fetch bgm data: %s", e)
             # 失败则保持现有的缓存数据
             pass
 
@@ -183,9 +197,11 @@ class AnimeProAPI:
 
     def get_favorites(self):
         if os.path.exists(self.fav_path):
-            with open(self.fav_path, 'r', encoding='utf-8') as f: 
+            with open(self.fav_path, 'r', encoding='utf-8') as f:
                 try: return json.load(f)
-                except: return []
+                except Exception as e:
+                    logging.error("get_favorites: failed to parse favorites.json: %s", e)
+                    return []
         return []
 
     def toggle_favorite(self, anime_data):
@@ -214,7 +230,9 @@ class AnimeProAPI:
             results = resp.json().get('list', [])
             self._process_image_urls(results)
             return {"status": "success", "results": results}
-        except: return {"status": "error", "results": []}
+        except Exception as e:
+            logging.error("search_anime failed: keyword=%s, error=%s", keyword, e)
+            return {"status": "error", "results": []}
 
     def search_torrents(self, kw):
         s, r = downloader.search_torrents(kw, self.config.get("rss_sources", []))

@@ -7,6 +7,7 @@ import feedparser
 import requests
 import re
 import urllib.parse
+import logging
 from dataclasses import dataclass, asdict
 from typing import Optional
 
@@ -86,7 +87,8 @@ def _search_single_source(keyword: str, source: RSSSource) -> list[dict]:
     try:
         resp = requests.get(url, headers=REQUEST_HEADERS, timeout=15)
         resp.raise_for_status()
-    except requests.RequestException:
+    except requests.RequestException as e:
+        logging.error("_search_single_source: source=%s, url=%s, error=%s", source.name, url, e)
         return []
 
     feed = feedparser.parse(resp.content)
@@ -130,7 +132,8 @@ def search_torrents(anime_name: str, sources: Optional[list[dict]] = None) -> tu
         try:
             items = _search_single_source(anime_name, src)
             all_results.extend(items)
-        except Exception:
+        except Exception as e:
+            logging.error("search_torrents: source=%s, error=%s", src.name, e)
             continue
 
     if not all_results:
