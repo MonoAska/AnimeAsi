@@ -122,7 +122,11 @@ class AnimeProAPI:
 
     def _download_img(self, url, local_path):
         try:
-            resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/5.0'}, timeout=10)
+            proxies = None
+            if self.config.get("use_proxy") and self.config.get("proxy_address"):
+                p = f"http://{self.config['proxy_address']}"
+                proxies = {"http": p, "https": p}
+            resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/5.0'}, proxies=proxies, timeout=10)
             if resp.status_code == 200:
                 with open(local_path, 'wb') as f:
                     f.write(resp.content)
@@ -246,7 +250,11 @@ class AnimeProAPI:
             return {"status": "error", "results": []}
 
     def search_torrents(self, kw):
-        s, r = downloader.search_torrents(kw, self.config.get("rss_sources", []))
+        proxies = None
+        if self.config.get("use_proxy") and self.config.get("proxy_address"):
+            p = f"http://{self.config['proxy_address']}"
+            proxies = {"http": p, "https": p}
+        s, r = downloader.search_torrents(kw, self.config.get("rss_sources", []), proxies)
         return {"status": s, "results": r}
 
     def push_download(self, url, name, path):

@@ -1411,11 +1411,15 @@ async function saveAppSettings() {
 }
 
 // 模态框控制
-// 修改现有的 openModal 函数
-function openModal(id) { 
+let modalZBase = 200;
+function openModal(id) {
     const m = document.getElementById(id);
-    if(m) m.classList.add('open'); 
-    
+    if(m) {
+        modalZBase += 10;
+        m.style.zIndex = modalZBase;
+        m.classList.add('open');
+    }
+
     // 💡 新增：如果是打开设置弹窗，顺便计算一下硬盘空间
     if(id === 'settingsModal') {
         updateCacheSize();

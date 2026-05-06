@@ -77,7 +77,7 @@ def _extract_torrent_url(entry) -> Optional[str]:
     return None
 
 
-def _search_single_source(keyword: str, source: RSSSource) -> list[dict]:
+def _search_single_source(keyword: str, source: RSSSource, proxies: dict = None) -> list[dict]:
     """搜索单个 RSS 源，返回统一格式的结果列表。"""
     if not source.enabled:
         return []
@@ -85,7 +85,7 @@ def _search_single_source(keyword: str, source: RSSSource) -> list[dict]:
     url = source.url_template.replace("{keyword}", urllib.parse.quote(keyword, safe=""))
 
     try:
-        resp = requests.get(url, headers=REQUEST_HEADERS, timeout=15)
+        resp = requests.get(url, headers=REQUEST_HEADERS, proxies=proxies, timeout=15)
         resp.raise_for_status()
     except requests.RequestException as e:
         logging.error("_search_single_source: source=%s, url=%s, error=%s", source.name, url, e)
@@ -111,7 +111,7 @@ def _search_single_source(keyword: str, source: RSSSource) -> list[dict]:
 
 # ─── 对外接口 ────────────────────────────────────────────
 
-def search_torrents(anime_name: str, sources: Optional[list[dict]] = None) -> tuple[str, list]:
+def search_torrents(anime_name: str, sources: Optional[list[dict]] = None, proxies: dict = None) -> tuple[str, list]:
     """
     搜索引擎：遍历所有启用的 RSS 订阅源，返回聚合结果。
     返回 ("success", list) 或 ("error", msg)
@@ -130,7 +130,7 @@ def search_torrents(anime_name: str, sources: Optional[list[dict]] = None) -> tu
     all_results = []
     for src in source_objs:
         try:
-            items = _search_single_source(anime_name, src)
+            items = _search_single_source(anime_name, src, proxies)
             all_results.extend(items)
         except Exception as e:
             logging.error("search_torrents: source=%s, error=%s", src.name, e)
