@@ -114,9 +114,13 @@ class AnimeProAPI:
 
     def save_config(self, new_config):
         self.config.update(new_config)
-        with open(self.config_path, 'w', encoding='utf-8') as f:
-            json.dump(self.config, f, ensure_ascii=False, indent=4)
-        return True
+        try:
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, ensure_ascii=False, indent=4)
+            return {"status": "success"}
+        except Exception as e:
+            logging.error("save_config failed: %s", e)
+            return {"status": "error", "message": str(e)}
 
     def get_init_config(self): return self.config
 
@@ -151,8 +155,12 @@ class AnimeProAPI:
                 threading.Thread(target=self._download_img, args=(img_url, local_path), daemon=True).start()
 
     def get_cache_size(self):
-        total = sum(os.path.getsize(os.path.join(self.cache_path, f)) for f in os.listdir(self.cache_path) if os.path.isfile(os.path.join(self.cache_path, f)))
-        return f"{total / (1024 * 1024):.1f} MB"
+        try:
+            total = sum(os.path.getsize(os.path.join(self.cache_path, f)) for f in os.listdir(self.cache_path) if os.path.isfile(os.path.join(self.cache_path, f)))
+            return f"{total / (1024 * 1024):.1f} MB"
+        except Exception as e:
+            logging.error("get_cache_size failed: %s", e)
+            return "0.0 MB"
 
     def clear_cache(self):
         for f in os.listdir(self.cache_path):
@@ -225,10 +233,14 @@ class AnimeProAPI:
         new_favs = [f for f in favs if f.get('name') != name]
         is_add = len(new_favs) == len(favs)
         if is_add: new_favs.insert(0, anime_data)
-        
-        with open(self.fav_path, 'w', encoding='utf-8') as f:
-            json.dump(new_favs, f, ensure_ascii=False, indent=4)
-        return {"status": "success", "is_favorite": is_add}
+
+        try:
+            with open(self.fav_path, 'w', encoding='utf-8') as f:
+                json.dump(new_favs, f, ensure_ascii=False, indent=4)
+            return {"status": "success", "is_favorite": is_add}
+        except Exception as e:
+            logging.error("toggle_favorite: failed to write favorites: %s", e)
+            return {"status": "error", "message": str(e)}
 
     def select_folder(self):
         root = Tk(); root.withdraw(); path = filedialog.askdirectory(); root.destroy()
@@ -272,9 +284,13 @@ class AnimeProAPI:
 
     def save_rss_sources(self, sources):
         self.config["rss_sources"] = sources
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            json.dump(self.config, f, ensure_ascii=False, indent=4)
-        return {"status": "success"}
+        try:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(self.config, f, ensure_ascii=False, indent=4)
+            return {"status": "success"}
+        except Exception as e:
+            logging.error("save_rss_sources failed: %s", e)
+            return {"status": "error", "message": str(e)}
 
     # ─── 本地动画管理 ────────────────────────────────
 

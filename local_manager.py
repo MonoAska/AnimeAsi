@@ -148,7 +148,7 @@ def play_episode(anime_name: str, episode_num: int, file_path: str) -> dict:
 
     try:
         if os.name == "nt":
-            subprocess.Popen(["start", "", file_path], shell=True)
+            os.startfile(file_path)
         elif os.name == "darwin":
             subprocess.Popen(["open", file_path])
         else:

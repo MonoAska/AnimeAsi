@@ -1137,7 +1137,7 @@ async function renderAnimeGrid() {
                     <div class="card-overlay-title">${name}</div>
                 </div>
 
-                <div class="${heartClass}" onclick="handleToggleFav(event, '${name}', '${img}', '${item.url}', this)">
+                <div class="${heartClass}" onclick="handleToggleFav(event, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(item.url)}', this)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
                     </svg>
@@ -1145,8 +1145,8 @@ async function renderAnimeGrid() {
             </div>
 
             <div class="card-body">
-                <button class="card-btn btn-detail" onclick="window.open('${item.url}')">🌐 详情</button>
-                <button class="card-btn btn-dl" onclick="handleSearch('${name}')">⬇️ 下载</button>
+                <button class="card-btn btn-detail" onclick="openLink('${escAttr(item.url)}')">🌐 详情</button>
+                <button class="card-btn btn-dl" onclick="handleSearch('${escAttr(name)}')">⬇️ 下载</button>
             </div>
         `;
 
@@ -1198,17 +1198,17 @@ function renderFavGrid() {
         card.innerHTML = `
             <div class="card-poster">
                 <img src="${item.img}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
-                <div class="play-btn-overlay" onclick="event.stopPropagation(); openEpisodeModal(decodeURIComponent('${encodeURIComponent(item.name)}'))">
+                <div class="play-btn-overlay" onclick="event.stopPropagation(); openEpisodeModal('${escAttr(item.name)}')">
                   <div class="play-circle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 19,12 8,19"/></svg></div>
                 </div>
                 <div class="card-overlay"><div class="card-overlay-title">${item.name}</div></div>
-                <div class="heart-btn liked" onclick="handleToggleFav(event, '${item.name}', '${item.img}', '${item.url}', this); renderFavGrid(); renderAnimeGrid();">
+                <div class="heart-btn liked" onclick="handleToggleFav(event, '${escAttr(item.name)}', '${escAttr(item.img)}', '${escAttr(item.url)}', this); renderFavGrid(); renderAnimeGrid();">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                 </div>
             </div>
             <div class="card-body">
-                <button class="card-btn btn-detail" onclick="window.open('${item.url}')">🌐 详情</button>
-                <button class="card-btn btn-dl" onclick="handleSearch('${item.name}')">⬇️ 下载</button>
+                <button class="card-btn btn-detail" onclick="openLink('${escAttr(item.url)}')">🌐 详情</button>
+                <button class="card-btn btn-dl" onclick="handleSearch('${escAttr(item.name)}')">⬇️ 下载</button>
             </div>
         `;
         grid.appendChild(card);
@@ -1259,14 +1259,14 @@ function renderTorrentList(animeName, results) {
     pywebview.api.get_init_config().then(conf => {
         const safeName = animeName.replace(/[\\/:*?"<>|]/g, '_');
         document.getElementById('dlPath').value = (conf.local_anime_path || "E:\\ANIME") + "\\" + safeName;
-    });
+    }).catch(e => console.warn('获取配置失败:', e));
 
     results.forEach(t => {
         const row = document.createElement('div');
         row.className = 'torrent-row';
         row.innerHTML = `
             <div class="torrent-info"><div class="torrent-name" title="${t.title}">${t.title}</div></div>
-            <button class="btn-push" onclick="executePush('${t.url}', '${animeName}', this)">推送</button>
+            <button class="btn-push" onclick="executePush('${escAttr(t.url)}', '${escAttr(animeName)}', this)">推送</button>
         `;
         list.appendChild(row);
     });
@@ -1349,13 +1349,13 @@ function renderAnimeSearchGrid(keyword, items) {
             <div class="card-poster">
                 <img loading="lazy" decoding="async" src="${img}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
                 <div class="card-overlay"><div class="card-overlay-title">${name}</div></div>
-                <div class="${heartClass}" onclick="handleToggleFav(event, '${name}', '${img}', '${url}', this)">
+                <div class="${heartClass}" onclick="handleToggleFav(event, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(url)}', this)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                 </div>
             </div>
             <div class="card-body">
-                <button class="card-btn btn-detail" onclick="window.open('${url}')">🌐 详情</button>
-                <button class="card-btn btn-dl" onclick="handleSearch('${name}')">⬇️ 下载</button>
+                <button class="card-btn btn-detail" onclick="openLink('${escAttr(url)}')">🌐 详情</button>
+                <button class="card-btn btn-dl" onclick="handleSearch('${escAttr(name)}')">⬇️ 下载</button>
             </div>
         `;
         grid.appendChild(card);
@@ -1538,7 +1538,7 @@ function applyPreset(index) {
         if (index < presets.length) {
             addRssSource(presets[index].name, presets[index].url_template);
         }
-    });
+    }).catch(e => console.warn('获取预设源失败:', e));
 }
 
 // 点其他地方关闭预设菜单
@@ -1559,7 +1559,7 @@ openModal = function(id) {
         pywebview.api.get_init_config().then(c => {
             globalRssSources = c.rss_sources || [];
             renderRssSources();
-        });
+        }).catch(e => console.warn('获取RSS配置失败:', e));
     }
 };
 
@@ -1623,7 +1623,7 @@ async function openEpisodeModal(animeName) {
                     <div class="episode-watched ${ep.watched ? 'done' : ''}"></div>
                     <span class="episode-name">${escapeHtml(ep.file)}</span>
                     <span class="episode-number">第 ${ep.episode} 集</span>
-                    <button class="episode-play-btn" onclick="handlePlayEpisode(decodeURIComponent('${encodeURIComponent(animeName)}'), ${ep.episode}, decodeURIComponent('${encodeURIComponent(ep.path)}'))" title="播放">
+                    <button class="episode-play-btn" onclick="handlePlayEpisode('${escAttr(animeName)}', ${ep.episode}, '${escAttr(ep.path)}')" title="播放">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 19,12 8,19"/></svg>
                     </button>
                 `;
@@ -1657,6 +1657,12 @@ function escapeHtml(str) {
     div.textContent = str;
     return div.innerHTML;
 }
+
+// JS 字符串安全转义（用于 onclick 等 HTML 属性内的 JS 字面量）
+function escAttr(s) {
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+function openLink(url) { window.open(url); }
 </script>
 </body>
 </html>
