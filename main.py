@@ -11,7 +11,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tkinter import filedialog, Tk
 from bottle import Bottle, static_file
 import downloader
-import local_manager 
+import local_manager
+import database
 
 # ================= 1. 路径与环境核心逻辑 =================
 
@@ -27,7 +28,8 @@ CONFIG_FILE = os.path.join(EXE_DIR, "config.json")
 FAV_FILE = os.path.join(EXE_DIR, "favorites.json")
 CACHE_DIR = os.path.join(EXE_DIR, "cache_covers")
 DATA_CACHE_FILE = os.path.join(EXE_DIR, "bgm_cache.json") # 日历数据缓存
-SUBJECT_TAGS_CACHE_FILE = os.path.join(EXE_DIR, "subject_tags_cache.json") # 条目标签缓存
+SUBJECT_TAGS_CACHE_FILE = os.path.join(EXE_DIR, "subject_tags_cache.json") # 条目标签缓存（迁移用）
+DB_PATH = os.path.join(EXE_DIR, "animeasi.db")
 WEB_DIR = os.path.join(RUNTIME_DIR, "web")
 
 os.chdir(EXE_DIR)
@@ -64,31 +66,24 @@ def serve_static(filepath):
 # ================= 3. 核心 API 类 =================
 class AnimeProAPI:
     def __init__(self):
-        # 💡 将全局路径绑定到 self，防止作用域报错
         self.config_path = CONFIG_FILE
-        self.fav_path = FAV_FILE
         self.cache_path = CACHE_DIR
-        self.data_cache_path = DATA_CACHE_FILE
-        
-        # 💡 自动创建缺失的配置文件
-        self._ensure_files_exist()
-        
+
         self.config = self.load_config()
-        self.cached_bgm_data = self._load_local_data_cache() # 优先加载本地缓存数据
-        self.subject_tags_cache = self._load_subject_tags_cache()
+
+        # 初始化数据库 & 迁移旧 JSON
+        self.db = database.AnimeDB(DB_PATH)
+        if self.db.needs_migration():
+            self.db.migrate_from_json(
+                DATA_CACHE_FILE, SUBJECT_TAGS_CACHE_FILE,
+                FAV_FILE, local_manager.WATCH_HISTORY_FILE
+            )
+
+        # 内存缓存 — 启动时从 DB 加载
+        self.cached_bgm_data = self.db.get_calendar() or []
+        self.subject_tags_cache = self.db.get_all_tags_map()
 
         threading.Thread(target=self._preload_bgm, daemon=True).start()
-
-    def _ensure_files_exist(self):
-        """确保所有持久化文件在启动时即存在"""
-        for file_path, default_content in [
-            (self.fav_path, []),
-            (self.data_cache_path, []),
-            (SUBJECT_TAGS_CACHE_FILE, {})
-        ]:
-            if not os.path.exists(file_path):
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    json.dump(default_content, f, ensure_ascii=False, indent=4)
 
     def load_config(self):
         default_config = {
@@ -173,33 +168,7 @@ class AnimeProAPI:
                 logging.error("clear_cache: failed to remove %s: %s", f, e)
         return {"status": "success"}
 
-    def _load_local_data_cache(self):
-        """从硬盘读取上次缓存的日历数据"""
-        if os.path.exists(self.data_cache_path):
-            try:
-                with open(self.data_cache_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except Exception as e:
-                logging.error("_load_local_data_cache: failed to load cache: %s", e)
-        return []
-
-    # ─── 条目标签缓存（日漫识别） ─────────────────────────
-
-    def _load_subject_tags_cache(self):
-        if os.path.exists(SUBJECT_TAGS_CACHE_FILE):
-            try:
-                with open(SUBJECT_TAGS_CACHE_FILE, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except Exception as e:
-                logging.error("_load_subject_tags_cache: failed: %s", e)
-        return {}
-
-    def _save_subject_tags_cache(self):
-        try:
-            with open(SUBJECT_TAGS_CACHE_FILE, 'w', encoding='utf-8') as f:
-                json.dump(self.subject_tags_cache, f, ensure_ascii=False)
-        except Exception as e:
-            logging.error("_save_subject_tags_cache: failed: %s", e)
+    # ─── 条目标签分类（日漫识别） ─────────────────────────
 
     @staticmethod
     def _classify_by_tags(tags):
@@ -236,29 +205,25 @@ class AnimeProAPI:
             resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/5.0'}, proxies=proxies, timeout=10)
             data = resp.json()
 
-            # 预处理图片
             all_items = []
             for day in data: all_items.extend(day.get('items', []))
             self._process_image_urls(all_items)
 
-            # 存入缓存文件实现"秒开"
             self.cached_bgm_data = data
-            with open(self.data_cache_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False)
+            self.db.save_calendar(data)
         except Exception as e:
             logging.error("_preload_bgm: failed to fetch bgm data: %s", e)
             pass
 
-        # 后台拉取所有未缓存的条目标签（用于日漫精准识别）
+        # 拉取所有未缓存的条目标签
         if self.cached_bgm_data:
             all_ids = set()
             for day in self.cached_bgm_data:
                 for item in day.get('items', []):
-                    sid = item.get('id')
-                    if sid:
-                        all_ids.add(str(sid))
+                    if item.get('id'):
+                        all_ids.add(item['id'])
 
-            uncached_ids = [sid for sid in all_ids if sid not in self.subject_tags_cache]
+            uncached_ids = self.db.get_uncached_ids(list(all_ids))
             if uncached_ids:
                 with ThreadPoolExecutor(max_workers=8) as executor:
                     futures = {executor.submit(self._fetch_single_subject_tags, sid): sid for sid in uncached_ids}
@@ -267,10 +232,10 @@ class AnimeProAPI:
                         try:
                             result = future.result()
                             if result is not None:
+                                self.db.save_tags(sid, result)
                                 self.subject_tags_cache[sid] = result
                         except Exception as e:
                             logging.error("_preload_bgm: tag fetch failed for id=%s: %s", sid, e)
-                self._save_subject_tags_cache()
 
     def get_bgm_data(self):
         data = self.cached_bgm_data
@@ -278,44 +243,32 @@ class AnimeProAPI:
             return data
         for day in data:
             for item in day.get('items', []):
-                sid = str(item.get('id'))
-                tags = self.subject_tags_cache.get(sid)
+                tags = self.subject_tags_cache.get(item.get('id'))
                 if tags is not None:
                     item['is_japanese'] = self._classify_by_tags(tags)
         return data
 
     def get_favorites(self):
-        if os.path.exists(self.fav_path):
-            try:
-                with open(self.fav_path, 'r', encoding='utf-8') as f:
-                    favs = json.load(f)
-                # 将收藏中的 Bangumi 远程图片 URL 替换为本地缓存路径
-                for item in favs:
-                    img = item.get("img", "")
-                    if img and img.startswith("http"):
-                        filename = img.split("/")[-1]
-                        local_path = os.path.join(self.cache_path, filename)
-                        if os.path.exists(local_path) and os.path.getsize(local_path) > 20480:
-                            item["img"] = f"/{filename}"
-                return favs
-            except Exception as e:
-                logging.error("get_favorites: failed to parse favorites.json: %s", e)
-                return []
-        return []
+        try:
+            favs = self.db.get_favorites()
+            for item in favs:
+                img = item.get("img", "")
+                if img and img.startswith("http"):
+                    filename = img.split("/")[-1]
+                    local_path = os.path.join(self.cache_path, filename)
+                    if os.path.exists(local_path) and os.path.getsize(local_path) > 20480:
+                        item["img"] = f"/{filename}"
+            return favs
+        except Exception as e:
+            logging.error("get_favorites: %s", e)
+            return []
 
     def toggle_favorite(self, anime_data):
-        favs = self.get_favorites()
-        name = anime_data.get('name')
-        new_favs = [f for f in favs if f.get('name') != name]
-        is_add = len(new_favs) == len(favs)
-        if is_add: new_favs.insert(0, anime_data)
-
         try:
-            with open(self.fav_path, 'w', encoding='utf-8') as f:
-                json.dump(new_favs, f, ensure_ascii=False, indent=4)
+            is_add = self.db.toggle_favorite(anime_data)
             return {"status": "success", "is_favorite": is_add}
         except Exception as e:
-            logging.error("toggle_favorite: failed to write favorites: %s", e)
+            logging.error("toggle_favorite: %s", e)
             return {"status": "error", "message": str(e)}
 
     def select_folder(self):
@@ -371,13 +324,13 @@ class AnimeProAPI:
     # ─── 本地动画管理 ────────────────────────────────
 
     def get_anime_episodes(self, anime_name):
-        return local_manager.get_anime_episodes(anime_name, self.config.get("local_anime_path", ""))
+        return local_manager.get_anime_episodes(anime_name, self.config.get("local_anime_path", ""), self.db)
 
     def play_episode(self, anime_name, episode, file_path):
-        return local_manager.play_episode(anime_name, episode, file_path)
+        return local_manager.play_episode(anime_name, episode, file_path, self.db)
 
     def get_watch_history(self):
-        return local_manager.get_watch_history()
+        return local_manager.get_watch_history(self.db)
 
 # ================= 4. 启动容器 =================
 if __name__ == '__main__':
