@@ -7,6 +7,7 @@ import logging
 import urllib.parse
 import requests
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from tkinter import filedialog, Tk
 from bottle import Bottle, static_file
 import downloader
@@ -25,7 +26,8 @@ else:
 CONFIG_FILE = os.path.join(EXE_DIR, "config.json")
 FAV_FILE = os.path.join(EXE_DIR, "favorites.json")
 CACHE_DIR = os.path.join(EXE_DIR, "cache_covers")
-DATA_CACHE_FILE = os.path.join(EXE_DIR, "bgm_cache.json") # 💡 新增：日历数据缓存
+DATA_CACHE_FILE = os.path.join(EXE_DIR, "bgm_cache.json") # 日历数据缓存
+SUBJECT_TAGS_CACHE_FILE = os.path.join(EXE_DIR, "subject_tags_cache.json") # 条目标签缓存
 WEB_DIR = os.path.join(RUNTIME_DIR, "web")
 
 os.chdir(EXE_DIR)
@@ -72,15 +74,17 @@ class AnimeProAPI:
         self._ensure_files_exist()
         
         self.config = self.load_config()
-        self.cached_bgm_data = self._load_local_data_cache() # 💡 优先加载本地缓存数据
-        
+        self.cached_bgm_data = self._load_local_data_cache() # 优先加载本地缓存数据
+        self.subject_tags_cache = self._load_subject_tags_cache()
+
         threading.Thread(target=self._preload_bgm, daemon=True).start()
 
     def _ensure_files_exist(self):
         """确保所有持久化文件在启动时即存在"""
         for file_path, default_content in [
             (self.fav_path, []),
-            (self.data_cache_path, [])
+            (self.data_cache_path, []),
+            (SUBJECT_TAGS_CACHE_FILE, {})
         ]:
             if not os.path.exists(file_path):
                 with open(file_path, 'w', encoding='utf-8') as f:
@@ -179,34 +183,106 @@ class AnimeProAPI:
                 logging.error("_load_local_data_cache: failed to load cache: %s", e)
         return []
 
+    # ─── 条目标签缓存（日漫识别） ─────────────────────────
+
+    def _load_subject_tags_cache(self):
+        if os.path.exists(SUBJECT_TAGS_CACHE_FILE):
+            try:
+                with open(SUBJECT_TAGS_CACHE_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                logging.error("_load_subject_tags_cache: failed: %s", e)
+        return {}
+
+    def _save_subject_tags_cache(self):
+        try:
+            with open(SUBJECT_TAGS_CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.subject_tags_cache, f, ensure_ascii=False)
+        except Exception as e:
+            logging.error("_save_subject_tags_cache: failed: %s", e)
+
+    @staticmethod
+    def _classify_by_tags(tags):
+        """Bgm.tv 以日漫为主，仅有非日漫才会被打上产地标签。"""
+        tag_names = {t.get('name', '') for t in tags}
+        non_jp = {"国产", "中国", "中国动画", "欧美", "欧美动画", "韩国", "韩剧", "美国", "法国"}
+        return False if (tag_names & non_jp) else True
+
+    def _fetch_single_subject_tags(self, subject_id):
+        try:
+            proxies = None
+            if self.config.get("use_proxy") and self.config.get("proxy_address"):
+                p = f"http://{self.config['proxy_address']}"
+                proxies = {"http": p, "https": p}
+            resp = requests.get(
+                f"https://api.bgm.tv/v0/subjects/{subject_id}",
+                headers={'User-Agent': 'AnimeAsi/5.0'},
+                proxies=proxies, timeout=10
+            )
+            data = resp.json()
+            return data.get('tags', [])
+        except Exception as e:
+            logging.error("_fetch_single_subject_tags: id=%s, error=%s", subject_id, e)
+            return None
+
     def _preload_bgm(self):
         url = "https://api.bgm.tv/calendar"
-        # 💡 加固代理逻辑
         proxies = None
         if self.config.get("use_proxy") and self.config.get("proxy_address"):
             p = f"http://{self.config['proxy_address']}"
             proxies = {"http": p, "https": p}
-            
+
         try:
             resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/5.0'}, proxies=proxies, timeout=10)
             data = resp.json()
-            
-            # 💡 预处理图片
+
+            # 预处理图片
             all_items = []
             for day in data: all_items.extend(day.get('items', []))
             self._process_image_urls(all_items)
-            
-            # 💡 存入缓存文件实现“秒开”
+
+            # 存入缓存文件实现"秒开"
             self.cached_bgm_data = data
             with open(self.data_cache_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False)
         except Exception as e:
             logging.error("_preload_bgm: failed to fetch bgm data: %s", e)
-            # 失败则保持现有的缓存数据
             pass
 
+        # 后台拉取所有未缓存的条目标签（用于日漫精准识别）
+        if self.cached_bgm_data:
+            all_ids = set()
+            for day in self.cached_bgm_data:
+                for item in day.get('items', []):
+                    sid = item.get('id')
+                    if sid:
+                        all_ids.add(str(sid))
+
+            uncached_ids = [sid for sid in all_ids if sid not in self.subject_tags_cache]
+            if uncached_ids:
+                with ThreadPoolExecutor(max_workers=8) as executor:
+                    futures = {executor.submit(self._fetch_single_subject_tags, sid): sid for sid in uncached_ids}
+                    for future in as_completed(futures):
+                        sid = futures[future]
+                        try:
+                            result = future.result()
+                            if result is not None:
+                                self.subject_tags_cache[sid] = result
+                        except Exception as e:
+                            logging.error("_preload_bgm: tag fetch failed for id=%s: %s", sid, e)
+                self._save_subject_tags_cache()
+
     def get_bgm_data(self):
-        return self.cached_bgm_data
+        data = self.cached_bgm_data
+        if not data:
+            return data
+        for day in data:
+            for item in day.get('items', []):
+                sid = str(item.get('id'))
+                tags = self.subject_tags_cache.get(sid)
+                if tags is not None:
+                    item['is_japanese'] = self._classify_by_tags(tags)
+        return data
 
     def get_favorites(self):
         if os.path.exists(self.fav_path):

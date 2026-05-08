@@ -909,7 +909,7 @@
         <div class="toggle-wrap">
           <div>
             <div class="toggle-label">只显示日本动画</div>
-            <div class="toggle-sub">自动过滤国漫/欧美动画 (基于标题假名识别)</div>
+            <div class="toggle-sub">自动过滤国漫/欧美动画 (基于 Bangumi 标签识别)</div>
           </div>
           <div class="toggle-switch" id="set_only_jp" onclick="this.classList.toggle('on')"></div>
         </div>
@@ -943,8 +943,12 @@
 
 <script>
 // ================= 1. 核心变量 =================
-// 判断字符串中是否包含日语假名（平假名/片假名）
-const isJapanese = (str) => /[\u3040-\u309F\u30A0-\u30FF]/.test(str);
+// 判断番剧是否为日本动画（依据 Bangumi 标签分类）
+const isJapaneseAnime = (item) => {
+    if (item.is_japanese === true) return true;
+    if (item.is_japanese === false) return false;
+    return true; // \u6807\u7B7E\u672A\u77E5\u65F6\u9ED8\u8BA4\u663E\u793A\uFF0C\u4E0D\u9519\u6740\u65E5\u6F2B
+};
 let globalBgmData = [];
 let globalFavorites = [];
 let globalRssSources = [];
@@ -1106,7 +1110,7 @@ async function renderAnimeGrid() {
     let items = globalBgmData[activeDay]?.items || [];
 
     if (config.only_show_japanese) {
-        items = items.filter(item => isJapanese(item.name));
+        items = items.filter(item => isJapaneseAnime(item));
     }
 
     document.getElementById('countBadge').textContent = `${items.length} 部`;
