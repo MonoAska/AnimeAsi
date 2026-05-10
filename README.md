@@ -43,7 +43,7 @@ pyinstaller build.spec
 | `local_manager.py` | 本地视频扫描、集数解析、系统播放 |
 | `WEB/index.html` | 前端单页应用（内联 CSS + JS） |
 
-数据文件（运行时自动生成，不提交）：
+数据文件（运行时自动生成）：
 
 | 文件 | 说明 |
 |------|------|
@@ -72,8 +72,8 @@ pyinstaller build.spec
 
 目录结构示例：
 ```
-E:\ANIME\葬送的芙莉莲\EP01.mp4
-E:\ANIME\葬送的芙莉莲\EP02.mp4
+D:\Anime\葬送的芙莉莲\EP01.mp4
+D:\Anime\葬送的芙莉莲\EP02.mp4
 ```
 
 ## 许可

@@ -91,7 +91,7 @@ class AnimeProAPI:
             "only_show_japanese": False,
             "use_proxy": False,
             "proxy_address": "127.0.0.1:7890",
-            "local_anime_path": "E:\\ANIME",
+            "local_anime_path": "",
             "qbt_host": "127.0.0.1:8080",
             "qbt_password": "",
             "rss_sources": [
