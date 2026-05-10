@@ -16,14 +16,19 @@
 ## 运行
 
 ```bash
-cd E:/CC/test
-source venv/Scripts/activate
+# 创建虚拟环境并安装依赖
+python -m venv venv
+source venv/Scripts/activate   # Windows Git Bash
+pip install pywebview bottle requests feedparser qbittorrent-api pycparser
+
+# 运行
 python main.py
 ```
 
 ## 打包
 
 ```bash
+pip install pyinstaller
 pyinstaller build.spec
 # 输出: dist/AnimeAsi.exe
 ```
