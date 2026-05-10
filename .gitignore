@@ -1,0 +1,16 @@
+__pycache__/
+.claude/
+.cursor/
+cache_covers/
+venv/
+bgm_cache.json
+config.json
+favorites.json
+error.log
+watch_history.json
+dist/
+build/
+animeasi.db
+animeasi.db-shm
+animeasi.db-wal
+subject_tags_cache.json

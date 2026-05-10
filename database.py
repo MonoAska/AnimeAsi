@@ -181,13 +181,66 @@ class AnimeDB:
             })
         return result
 
+    def save_subject_full(self, data):
+        """从 Bangumi v0 API 完整数据存入 subjects 表并保存标签。"""
+        c = self.conn
+        sid = data["id"]
+        rating = data.get("rating")
+        images = data.get("images") or {}
+        c.execute(
+            """INSERT OR REPLACE INTO subjects
+               (id, name, name_cn, url, air_date, air_weekday,
+                rating, rank, summary, image_common, image_large, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
+            (
+                sid,
+                data.get("name"),
+                data.get("name_cn"),
+                data.get("url") or f"https://bgm.tv/subject/{sid}",
+                data.get("date"),
+                data.get("air_weekday"),
+                json.dumps(rating, ensure_ascii=False) if rating else None,
+                data.get("rank"),
+                data.get("summary"),
+                images.get("common"),
+                images.get("large"),
+            )
+        )
+        tags = data.get("tags", [])
+        if tags:
+            c.execute("DELETE FROM subject_tags WHERE subject_id = ?", (sid,))
+            c.executemany(
+                "INSERT INTO subject_tags (subject_id, tag_name, tag_count) VALUES (?, ?, ?)",
+                [(sid, t["name"], t.get("count", 0)) for t in tags]
+            )
+        c.commit()
+
     # ─── Favorites ──────────────────────────────────────
 
     def get_favorites(self):
         rows = self.conn.execute(
-            "SELECT * FROM favorites ORDER BY added_at DESC"
+            """SELECT f.*, s.rating, s.rank
+               FROM favorites f
+               LEFT JOIN subjects s ON f.subject_id = s.id AND f.subject_id != 0
+               ORDER BY f.added_at DESC"""
         ).fetchall()
-        return [{"name": r["name"], "img": r["img"], "url": r["url"]} for r in rows]
+        result = []
+        for r in rows:
+            fav = {"id": r["subject_id"], "name": r["name"], "img": r["img"], "url": r["url"]}
+            if r["rating"]:
+                fav["rating"] = json.loads(r["rating"])
+                fav["rank"] = r["rank"]
+            else:
+                # JOIN 未命中，回退按名称匹配（覆盖 id=0 老数据 + 搜索结果不在 calendar 中的新条目）
+                sub = self.conn.execute(
+                    "SELECT rating, rank FROM subjects WHERE name = ? OR name_cn = ? LIMIT 1",
+                    (r["name"], r["name"])
+                ).fetchone()
+                if sub and sub["rating"]:
+                    fav["rating"] = json.loads(sub["rating"])
+                    fav["rank"] = sub["rank"]
+            result.append(fav)
+        return result
 
     def toggle_favorite(self, anime_data):
         name = anime_data.get("name")
@@ -200,9 +253,25 @@ class AnimeDB:
             c.commit()
             return False
         else:
+            sid = anime_data.get("id", 0)
+            rating = anime_data.get("rating")
+            rank = anime_data.get("rank")
+            # 将番剧元数据写入 subjects 表，确保后续 get_favorites 的 JOIN 能命中
+            # （搜索结果、非当季番剧的评分数据不在 calendar 中）
+            if rating and sid:
+                c.execute(
+                    """INSERT OR IGNORE INTO subjects
+                       (id, name, rating, rank, url, image_common)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (sid, name,
+                     json.dumps(rating, ensure_ascii=False) if isinstance(rating, dict) else json.dumps({"score": rating}),
+                     rank,
+                     anime_data.get("url", ""),
+                     anime_data.get("img", ""))
+                )
             c.execute(
                 "INSERT INTO favorites (subject_id, name, img, url) VALUES (?, ?, ?, ?)",
-                (0, name, anime_data.get("img", ""), anime_data.get("url", ""))
+                (sid, name, anime_data.get("img", ""), anime_data.get("url", ""))
             )
             c.commit()
             return True

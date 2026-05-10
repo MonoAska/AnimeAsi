@@ -8,6 +8,7 @@ import requests
 import re
 import urllib.parse
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, asdict
 from typing import Optional
 
@@ -128,13 +129,14 @@ def search_torrents(anime_name: str, sources: Optional[list[dict]] = None, proxi
         ]
 
     all_results = []
-    for src in source_objs:
-        try:
-            items = _search_single_source(anime_name, src, proxies)
-            all_results.extend(items)
-        except Exception as e:
-            logging.error("search_torrents: source=%s, error=%s", src.name, e)
-            continue
+    with ThreadPoolExecutor(max_workers=len(source_objs)) as executor:
+        futures = {executor.submit(_search_single_source, anime_name, src, proxies): src for src in source_objs}
+        for future in as_completed(futures):
+            src = futures[future]
+            try:
+                all_results.extend(future.result())
+            except Exception as e:
+                logging.error("search_torrents: source=%s, error=%s", src.name, e)
 
     if not all_results:
         return "error", []
@@ -153,7 +155,7 @@ def push_to_qbittorrent(torrent_url: str, qbt_config: dict) -> tuple[str, str]:
         qbt_client = qbittorrentapi.Client(
             host=qbt_config.get("host", "127.0.0.1:8080"),
             username=qbt_config.get("username", "admin"),
-            password=qbt_config.get("password", "adminadmin"),
+            password=qbt_config.get("password", ""),
         )
         qbt_client.auth_log_in()
 

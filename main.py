@@ -93,7 +93,7 @@ class AnimeProAPI:
             "proxy_address": "127.0.0.1:7890",
             "local_anime_path": "E:\\ANIME",
             "qbt_host": "127.0.0.1:8080",
-            "qbt_password": "adminadmin",
+            "qbt_password": "",
             "rss_sources": [
                 {"name": "蜜柑计划", "url_template": "https://mikanani.me/RSS/Search?searchstr={keyword}", "enabled": True},
                 {"name": "Nyaa.si", "url_template": "https://nyaa.si/?page=rss&q={keyword}&c=0_0&f=0", "enabled": True},
@@ -129,7 +129,7 @@ class AnimeProAPI:
             if self.config.get("use_proxy") and self.config.get("proxy_address"):
                 p = f"http://{self.config['proxy_address']}"
                 proxies = {"http": p, "https": p}
-            resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/5.0'}, proxies=proxies, timeout=10)
+            resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/6.6 (github.com/animeasi)'}, proxies=proxies, timeout=10)
             if resp.status_code == 200:
                 with open(local_path, 'wb') as f:
                     f.write(resp.content)
@@ -185,7 +185,7 @@ class AnimeProAPI:
                 proxies = {"http": p, "https": p}
             resp = requests.get(
                 f"https://api.bgm.tv/v0/subjects/{subject_id}",
-                headers={'User-Agent': 'AnimeAsi/5.0'},
+                headers={'User-Agent': 'AnimeAsi/6.6 (github.com/animeasi)'},
                 proxies=proxies, timeout=10
             )
             data = resp.json()
@@ -193,6 +193,26 @@ class AnimeProAPI:
         except Exception as e:
             logging.error("_fetch_single_subject_tags: id=%s, error=%s", subject_id, e)
             return None
+
+    def _fetch_and_save_subject(self, subject_id):
+        """后台拉取完整 subject 数据并存入 DB（收藏时触发）。"""
+        try:
+            proxies = None
+            if self.config.get("use_proxy") and self.config.get("proxy_address"):
+                p = f"http://{self.config['proxy_address']}"
+                proxies = {"http": p, "https": p}
+            resp = requests.get(
+                f"https://api.bgm.tv/v0/subjects/{subject_id}",
+                headers={'User-Agent': 'AnimeAsi/6.6 (github.com/animeasi)'},
+                proxies=proxies, timeout=10
+            )
+            data = resp.json()
+            self.db.save_subject_full(data)
+            tags = data.get('tags', [])
+            if tags:
+                self.subject_tags_cache[subject_id] = tags
+        except Exception as e:
+            logging.error("_fetch_and_save_subject: id=%s, error=%s", subject_id, e)
 
     def _preload_bgm(self):
         url = "https://api.bgm.tv/calendar"
@@ -202,7 +222,7 @@ class AnimeProAPI:
             proxies = {"http": p, "https": p}
 
         try:
-            resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/5.0'}, proxies=proxies, timeout=10)
+            resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/6.6 (github.com/animeasi)'}, proxies=proxies, timeout=10)
             data = resp.json()
 
             all_items = []
@@ -266,6 +286,17 @@ class AnimeProAPI:
     def toggle_favorite(self, anime_data):
         try:
             is_add = self.db.toggle_favorite(anime_data)
+            if is_add and anime_data.get("id", 0):
+                sid = anime_data["id"]
+                exists = self.db.conn.execute(
+                    "SELECT 1 FROM subjects WHERE id = ?", (sid,)
+                ).fetchone()
+                if not exists:
+                    threading.Thread(
+                        target=self._fetch_and_save_subject,
+                        args=(sid,),
+                        daemon=True
+                    ).start()
             return {"status": "success", "is_favorite": is_add}
         except Exception as e:
             logging.error("toggle_favorite: %s", e)
@@ -282,7 +313,7 @@ class AnimeProAPI:
             p = f"http://{self.config['proxy_address']}"
             proxies = {"http": p, "https": p}
         try:
-            resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/5.0'}, proxies=proxies, timeout=10)
+            resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/6.6 (github.com/animeasi)'}, proxies=proxies, timeout=10)
             results = resp.json().get('list', [])
             self._process_image_urls(results)
             return {"status": "success", "results": results}
@@ -337,8 +368,8 @@ if __name__ == '__main__':
     api = AnimeProAPI()
     
     window = webview.create_window(
-        'AnimeAsi v6.0', 
-        server, 
+        'AnimeAsi v6.6',
+        server,
         js_api=api, 
         width=1100, 
         height=800, 

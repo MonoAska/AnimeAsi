@@ -366,10 +366,31 @@
     overflow: hidden;
   }
 
+  /* Rating badge */
+  .rating-badge {
+    position: absolute; top: 8px; left: 8px;
+    background: rgba(13,15,26,0.82);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px; font-weight: 700;
+    backdrop-filter: blur(4px);
+    color: #ffc107;
+    display: flex; align-items: center; gap: 3px;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .rating-badge.top {
+    color: var(--pink);
+    border-color: rgba(255,107,157,0.3);
+    box-shadow: 0 0 10px rgba(255,107,157,0.25);
+  }
+
   /* Heart btn */
   .heart-btn {
     position: absolute; top: 8px; right: 8px;
     width: 28px; height: 28px;
+    z-index: 3;
     background: rgba(13,15,26,0.7);
     border: 1px solid rgba(255,255,255,0.15);
     border-radius: 50%;
@@ -627,6 +648,21 @@
      SETTINGS PANEL
   ══════════════════════════════════════ */
   #settingsModal .modal { max-width: 480px; }
+
+  /* About section */
+  .about-content {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 12px 16px;
+  }
+  .about-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 0;
+  }
+  .about-row + .about-row { border-top: 1px solid var(--border); }
+  .about-label { font-size: 12px; color: var(--txt3); }
+  .about-value { font-size: 13px; font-weight: 500; color: var(--txt2); }
   .settings-section { margin-bottom: 24px; }
   .settings-section-title {
     font-size: 11px; font-weight: 700; text-transform: uppercase;
@@ -929,6 +965,14 @@
         </div>
       </div>
 
+      <div class="settings-section">
+        <div class="settings-section-title">关于</div>
+        <div class="about-content">
+          <div class="about-row"><span class="about-label">版本</span><span class="about-value">v6.6</span></div>
+          <div class="about-row"><span class="about-label">数据来源</span><span class="about-value">Bangumi 番组计划</span></div>
+        </div>
+      </div>
+
     </div>
     <div class="modal-footer">
       <button class="btn-primary" onclick="saveAppSettings()">保存并刷新</button>
@@ -977,8 +1021,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 💡 修复 1：正确获取收藏按钮元素
     const favBtn = document.getElementById('favBtn');
     if (favBtn) {
-        favBtn.onclick = () => {
-            renderFavGrid(); // 打开前重新渲染一次
+        favBtn.onclick = async () => {
+            globalFavorites = await pywebview.api.get_favorites();
+            renderFavGrid();
             openModal('favModal');
         };
     }
@@ -1124,6 +1169,10 @@ async function renderAnimeGrid() {
 
         const isFav = globalFavorites.some(f => f.name === name);
         const heartClass = isFav ? 'heart-btn liked' : 'heart-btn';
+        const rating = item.rating;
+        const ratingHtml = rating?.score
+            ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}">★ ${rating.score.toFixed(1)}</div>`
+            : '';
 
         const card = document.createElement('div');
         card.className = 'anime-card';
@@ -1136,12 +1185,12 @@ async function renderAnimeGrid() {
                     src="${img}"
                     onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'"
                 >
-
+                ${ratingHtml}
                 <div class="card-overlay">
                     <div class="card-overlay-title">${name}</div>
                 </div>
 
-                <div class="${heartClass}" onclick="handleToggleFav(event, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(item.url)}', this)">
+                <div class="${heartClass}" onclick="handleToggleFav(event, ${item.id || 0}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(item.url)}', ${item.rating?.score || 0}, ${item.rank || 0}, this)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
                     </svg>
@@ -1166,20 +1215,21 @@ async function renderAnimeGrid() {
 }
 
 // 处理爱心点击逻辑
-async function handleToggleFav(event, name, img, url, btnElement) {
+async function handleToggleFav(event, subjectId, name, img, url, ratingScore, rankNum, btnElement) {
     event.stopPropagation(); // 阻止点击穿透
-    
-    const animeData = { name, img, url };
+
+    const animeData = { id: subjectId, name, img, url };
+    if (ratingScore) animeData.rating = { score: ratingScore };
+    if (rankNum) animeData.rank = rankNum;
     const res = await pywebview.api.toggle_favorite(animeData);
-    
+
     if (res.status === 'success') {
+        globalFavorites = await pywebview.api.get_favorites();
         if (res.is_favorite) {
             btnElement.classList.add('liked');
-            globalFavorites.push(animeData); 
             showToast('已加入收藏 ♥');
         } else {
             btnElement.classList.remove('liked');
-            globalFavorites = globalFavorites.filter(f => f.name !== name);
             showToast('已取消收藏');
         }
     }
@@ -1199,14 +1249,19 @@ function renderFavGrid() {
     globalFavorites.forEach(item => {
         const card = document.createElement('div');
         card.className = 'anime-card';
+        const favRating = item.rating;
+        const favRatingHtml = favRating?.score
+            ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}">★ ${favRating.score.toFixed(1)}</div>`
+            : '';
         card.innerHTML = `
             <div class="card-poster">
                 <img src="${item.img}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
+                ${favRatingHtml}
                 <div class="play-btn-overlay" onclick="event.stopPropagation(); openEpisodeModal('${escAttr(item.name)}')">
                   <div class="play-circle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 19,12 8,19"/></svg></div>
                 </div>
                 <div class="card-overlay"><div class="card-overlay-title">${item.name}</div></div>
-                <div class="heart-btn liked" onclick="handleToggleFav(event, '${escAttr(item.name)}', '${escAttr(item.img)}', '${escAttr(item.url)}', this); renderFavGrid(); renderAnimeGrid();">
+                <div class="heart-btn liked" onclick="(async () => { await handleToggleFav(event, ${item.id || 0}, '${escAttr(item.name)}', '${escAttr(item.img)}', '${escAttr(item.url)}', 0, 0, event.currentTarget); renderFavGrid(); renderAnimeGrid(); })()">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                 </div>
             </div>
@@ -1346,14 +1401,19 @@ function renderAnimeSearchGrid(keyword, items) {
         // 检查是不是已经收藏了
         const isFav = globalFavorites.some(f => f.name === name);
         const heartClass = isFav ? 'heart-btn liked' : 'heart-btn';
+        const sRating = item.rating;
+        const sRatingHtml = sRating?.score
+            ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}">★ ${sRating.score.toFixed(1)}</div>`
+            : '';
 
         const card = document.createElement('div');
         card.className = 'anime-card';
         card.innerHTML = `
             <div class="card-poster">
                 <img loading="lazy" decoding="async" src="${img}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
+                ${sRatingHtml}
                 <div class="card-overlay"><div class="card-overlay-title">${name}</div></div>
-                <div class="${heartClass}" onclick="handleToggleFav(event, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(url)}', this)">
+                <div class="${heartClass}" onclick="handleToggleFav(event, ${item.id || 0}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(url)}', ${item.rating?.score || 0}, ${item.rank || 0}, this)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                 </div>
             </div>
