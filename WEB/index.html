@@ -22,22 +22,6 @@
 <title>AnimeAsi v5.3 — 全能番剧中枢</title>
 <script src="lucide.min.js" defer></script>
 <style>
-  /* 💡 增加两侧间距，让卡片不再紧贴边缘 */
-.layout { 
-  position: relative; 
-  z-index: 1; 
-  max-width: 1280px; 
-  margin: 0 auto; 
-  padding: 0 40px; /* 从 24px 增加到 40px */
-}
-
-/* 💡 优化网格，增加间距并微调卡片大小 */
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); /* 稍微调大一点最小宽度 */
-  gap: 24px; /* 间距从 16px 增加到 24px */
-  padding-bottom: 40px; /* 底部留白 */
-}
   /* ── CSS Variables ── */
   :root {
     --bg:        #0d0f1a;
@@ -366,6 +350,28 @@
     overflow: hidden;
   }
 
+  /* Tag chips in overlay */
+  .card-tags {
+    display: flex; gap: 4px; flex-wrap: wrap;
+    margin-top: 6px;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  .anime-card:hover .card-tags {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .tag-chip {
+    font-size: 9px; font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.85);
+    border: 1px solid rgba(255,255,255,0.1);
+    white-space: nowrap;
+  }
+
   /* Rating badge */
   .rating-badge {
     position: absolute; top: 8px; left: 8px;
@@ -649,6 +655,38 @@
   ══════════════════════════════════════ */
   #settingsModal .modal { max-width: 480px; }
 
+  /* Detail modal */
+  .detail-hero {
+    display: flex; gap: 20px; align-items: flex-start;
+  }
+  .detail-poster {
+    width: 140px; aspect-ratio: 120/162;
+    border-radius: var(--r-sm); overflow: hidden;
+    flex-shrink: 0;
+    background: var(--bg3);
+  }
+  .detail-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .detail-info { flex: 1; min-width: 0; }
+  .detail-name { font-size: 16px; font-weight: 700; color: var(--txt1); margin-bottom: 2px; }
+  .detail-name-cn { font-size: 13px; color: var(--txt2); margin-bottom: 8px; }
+  .detail-meta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .detail-score { font-size: 18px; font-weight: 700; color: #ffc107; }
+  .detail-score.top { color: var(--pink); }
+  .detail-rank { font-size: 12px; color: var(--txt3); }
+  .detail-date { font-size: 11px; color: var(--txt3); }
+  .detail-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+  .detail-tag {
+    font-size: 10px; padding: 3px 8px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 99px; color: var(--txt2);
+  }
+  .detail-summary {
+    font-size: 12px; line-height: 1.7; color: var(--txt2);
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: var(--r-sm); padding: 14px;
+    max-height: 160px; overflow-y: auto;
+  }
+
   /* About section */
   .about-content {
     background: var(--bg3);
@@ -779,7 +817,13 @@
       <div class="theme-toggle" id="themeToggle" title="切换主题">
         <div class="theme-toggle-thumb"><span id="themeIcon">🌙</span></div>
       </div>
-      
+
+      <div class="icon-btn" id="openFolderBtn" title="打开本地动漫库" onclick="openAnimeFolder()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </div>
+
       <div class="icon-btn" id="settingsBtn" title="设置">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle>
@@ -870,6 +914,22 @@
     <div class="modal-body" id="episodeModalBody">
       <div class="episode-list" id="episodeList"></div>
     </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="max-width: 600px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="detailTitle">详情</div>
+        <div class="modal-subtitle" id="detailSubtitle"></div>
+      </div>
+      <div class="modal-close" onclick="closeModal('detailModal')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+      </div>
+    </div>
+    <div class="modal-body" id="detailBody" style="display:flex; flex-direction:column; gap:16px;"></div>
+    <div class="modal-footer" id="detailFooter"></div>
   </div>
 </div>
 
@@ -968,7 +1028,7 @@
       <div class="settings-section">
         <div class="settings-section-title">关于</div>
         <div class="about-content">
-          <div class="about-row"><span class="about-label">版本</span><span class="about-value">v6.6</span></div>
+          <div class="about-row"><span class="about-label">版本</span><span class="about-value">v6.7</span></div>
           <div class="about-row"><span class="about-label">数据来源</span><span class="about-value">Bangumi 番组计划</span></div>
         </div>
       </div>
@@ -1173,12 +1233,16 @@ async function renderAnimeGrid() {
         const ratingHtml = rating?.score
             ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}">★ ${rating.score.toFixed(1)}</div>`
             : '';
+        const tags = item.top_tags;
+        const tagsHtml = tags?.length
+            ? `<div class="card-tags">${tags.map(t => `<span class="tag-chip">${t}</span>`).join('')}</div>`
+            : '';
 
         const card = document.createElement('div');
         card.className = 'anime-card';
 
         card.innerHTML = `
-            <div class="card-poster">
+            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${item.id || 0})" style="cursor:pointer">
                 <img
                     loading="lazy"
                     decoding="async"
@@ -1186,8 +1250,9 @@ async function renderAnimeGrid() {
                     onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'"
                 >
                 ${ratingHtml}
-                <div class="card-overlay">
+                <div class="card-overlay" style="pointer-events:none">
                     <div class="card-overlay-title">${name}</div>
+                    ${tagsHtml}
                 </div>
 
                 <div class="${heartClass}" onclick="handleToggleFav(event, ${item.id || 0}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(item.url)}', ${item.rating?.score || 0}, ${item.rank || 0}, this)">
@@ -1235,6 +1300,64 @@ async function handleToggleFav(event, subjectId, name, img, url, ratingScore, ra
     }
 }
 
+// 番剧详情弹窗
+async function openDetailModal(subjectId) {
+    if (!subjectId) return;
+    openModal('detailModal');
+    const body = document.getElementById('detailBody');
+    const title = document.getElementById('detailTitle');
+    const subtitle = document.getElementById('detailSubtitle');
+    const footer = document.getElementById('detailFooter');
+    title.textContent = '加载中...';
+    subtitle.textContent = '';
+    body.innerHTML = '<div class="detail-loading" style="text-align:center;padding:40px;color:var(--txt3);">加载中...</div>';
+    footer.innerHTML = '';
+
+    try {
+        const d = await pywebview.api.get_subject_detail(subjectId);
+        if (d.error) { body.innerHTML = `<div style="text-align:center;padding:40px;color:var(--txt3);">加载失败: ${d.error}</div>`; return; }
+
+        const img = d.images?.large || d.images?.common || '';
+        const name = d.name_cn || d.name || '';
+        const nameSub = d.name_cn ? d.name : '';
+        const ratingHtml = d.rating?.score
+            ? `<span class="detail-score${d.rank && d.rank < 1000 ? ' top' : ''}">★ ${d.rating.score.toFixed(1)}</span>`
+            : '';
+        const rankHtml = d.rank ? `<span class="detail-rank">排名 #${d.rank}</span>` : '';
+        const dateHtml = d.air_date ? `<span class="detail-date">${d.air_date}</span>` : '';
+        const tagsHtml = d.top_tags?.length
+            ? `<div class="detail-tags">${d.top_tags.map(t => `<span class="detail-tag">${t}</span>`).join('')}</div>`
+            : '';
+        const summary = d.summary || '暂无简介';
+
+        title.textContent = name;
+        subtitle.textContent = nameSub;
+
+        body.innerHTML = `
+            <div class="detail-hero">
+                <div class="detail-poster">
+                    <img src="${img}" onerror="this.style.display='none'">
+                </div>
+                <div class="detail-info">
+                    <div class="detail-name">${name}</div>
+                    ${nameSub ? `<div class="detail-name-cn">${nameSub}</div>` : ''}
+                    <div class="detail-meta">${ratingHtml}${rankHtml}${dateHtml}</div>
+                    ${tagsHtml}
+                </div>
+            </div>
+            <div class="detail-summary">${summary.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+        `;
+
+        footer.innerHTML = `
+            <button class="btn-ghost" onclick="openLink('${escAttr(d.url || '')}')" style="height:32px;padding:0 14px;">🌐 Bangumi 详情</button>
+            <button class="btn-ghost" onclick="handleSearch('${escAttr(name)}')" style="height:32px;padding:0 14px;">⬇️ 搜索下载</button>
+        `;
+    } catch (e) {
+        body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--txt3);">加载失败</div>';
+        footer.innerHTML = '';
+    }
+}
+
 // 渲染收藏库弹窗
 function renderFavGrid() {
     const grid = document.getElementById('favGrid');
@@ -1253,14 +1376,21 @@ function renderFavGrid() {
         const favRatingHtml = favRating?.score
             ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}">★ ${favRating.score.toFixed(1)}</div>`
             : '';
+        const favTags = item.top_tags;
+        const favTagsHtml = favTags?.length
+            ? `<div class="card-tags">${favTags.map(t => `<span class="tag-chip">${t}</span>`).join('')}</div>`
+            : '';
         card.innerHTML = `
-            <div class="card-poster">
+            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${item.id || 0})" style="cursor:pointer">
                 <img src="${item.img}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
                 ${favRatingHtml}
                 <div class="play-btn-overlay" onclick="event.stopPropagation(); openEpisodeModal('${escAttr(item.name)}')">
                   <div class="play-circle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 19,12 8,19"/></svg></div>
                 </div>
-                <div class="card-overlay"><div class="card-overlay-title">${item.name}</div></div>
+                <div class="card-overlay" style="pointer-events:none">
+                    <div class="card-overlay-title">${item.name}</div>
+                    ${favTagsHtml}
+                </div>
                 <div class="heart-btn liked" onclick="(async () => { await handleToggleFav(event, ${item.id || 0}, '${escAttr(item.name)}', '${escAttr(item.img)}', '${escAttr(item.url)}', 0, 0, event.currentTarget); renderFavGrid(); renderAnimeGrid(); })()">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                 </div>
@@ -1363,6 +1493,10 @@ async function handleBrowseFolder(targetId) {
     }
 }
 
+async function openAnimeFolder() {
+    await pywebview.api.open_local_folder();
+}
+
 // ================= 新增：番剧搜索逻辑 =================
 
 // 1. 发送请求给 Python 搜番剧
@@ -1405,14 +1539,21 @@ function renderAnimeSearchGrid(keyword, items) {
         const sRatingHtml = sRating?.score
             ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}">★ ${sRating.score.toFixed(1)}</div>`
             : '';
+        const sTags = item.top_tags;
+        const sTagsHtml = sTags?.length
+            ? `<div class="card-tags">${sTags.map(t => `<span class="tag-chip">${t}</span>`).join('')}</div>`
+            : '';
 
         const card = document.createElement('div');
         card.className = 'anime-card';
         card.innerHTML = `
-            <div class="card-poster">
+            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${item.id || 0})" style="cursor:pointer">
                 <img loading="lazy" decoding="async" src="${img}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
                 ${sRatingHtml}
-                <div class="card-overlay"><div class="card-overlay-title">${name}</div></div>
+                <div class="card-overlay" style="pointer-events:none">
+                    <div class="card-overlay-title">${name}</div>
+                    ${sTagsHtml}
+                </div>
                 <div class="${heartClass}" onclick="handleToggleFav(event, ${item.id || 0}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(url)}', ${item.rating?.score || 0}, ${item.rank || 0}, this)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                 </div>

@@ -4,6 +4,7 @@ import sys
 import os
 import json
 import logging
+import re
 import urllib.parse
 import requests
 import threading
@@ -257,6 +258,78 @@ class AnimeProAPI:
                         except Exception as e:
                             logging.error("_preload_bgm: tag fetch failed for id=%s: %s", sid, e)
 
+    def _top_tags_from_cache(self, subject_id, limit=3):
+        """从内存缓存获取标签，最多 1 个日期标签（取最具体），其余按 count 降序。"""
+        tags = self.subject_tags_cache.get(subject_id)
+        if not tags:
+            return None
+        def _is_date(t):
+            name = t.get('name', '')
+            if re.match(r'\d{4}\s*-\s*\d{4}', name):  # 年代范围 "2020-2029"
+                return False
+            if '年代' in name:  # "2020年代"
+                return False
+            return bool(re.match(r'^\d{4}', name)) or '月' in name or '年' in name
+        date_tags = [t for t in tags if _is_date(t)]
+        other_tags = [t for t in tags if not _is_date(t)]
+        date_tags.sort(key=lambda t: -len(t.get('name', '')))
+        other_tags.sort(key=lambda t: -t.get('count', 0))
+        result = date_tags[:1] + other_tags
+        return [t['name'] for t in result[:limit]]
+
+    def _row_to_detail(self, row):
+        rating = json.loads(row["rating"]) if row["rating"] else None
+        rank = row["rank"]
+        if rank is None and rating:
+            rank = rating.get("rank")
+        return {
+            "id": row["id"], "name": row["name"], "name_cn": row["name_cn"],
+            "url": row["url"], "summary": row["summary"] or "",
+            "air_date": row["air_date"],
+            "rating": rating, "rank": rank,
+            "images": {"common": row["image_common"], "large": row["image_large"]},
+            "top_tags": self._top_tags_from_cache(row["id"], limit=8),
+        }
+
+    def get_subject_detail(self, subject_id):
+        """返回番剧完整详情，DB 有简介时直接返回，否则从 API 拉取并存储。"""
+        row = self.db.conn.execute(
+            "SELECT * FROM subjects WHERE id = ?", (subject_id,)
+        ).fetchone()
+        if row and row["summary"]:
+            return self._row_to_detail(row)
+
+        try:
+            proxies = None
+            if self.config.get("use_proxy") and self.config.get("proxy_address"):
+                p = f"http://{self.config['proxy_address']}"
+                proxies = {"http": p, "https": p}
+            resp = requests.get(
+                f"https://api.bgm.tv/v0/subjects/{subject_id}",
+                headers={'User-Agent': 'AnimeAsi/6.6 (github.com/animeasi)'},
+                proxies=proxies, timeout=10
+            )
+            data = resp.json()
+            self.db.save_subject_full(data)
+            tags = data.get("tags", [])
+            if tags:
+                self.subject_tags_cache[subject_id] = tags
+            return {
+                "id": data["id"], "name": data.get("name"), "name_cn": data.get("name_cn"),
+                "url": data.get("url") or f"https://bgm.tv/subject/{subject_id}",
+                "summary": data.get("summary") or "",
+                "air_date": data.get("date"),
+                "rating": data.get("rating"),
+                "rank": data.get("rank") or (data.get("rating") or {}).get("rank"),
+                "images": data.get("images") or {},
+                "top_tags": self._top_tags_from_cache(subject_id, limit=8),
+            }
+        except Exception as e:
+            logging.error("get_subject_detail: id=%s, error=%s", subject_id, e)
+            if row:
+                return self._row_to_detail(row)
+            return {"id": subject_id, "error": str(e)}
+
     def get_bgm_data(self):
         data = self.cached_bgm_data
         if not data:
@@ -266,6 +339,7 @@ class AnimeProAPI:
                 tags = self.subject_tags_cache.get(item.get('id'))
                 if tags is not None:
                     item['is_japanese'] = self._classify_by_tags(tags)
+                    item['top_tags'] = self._top_tags_from_cache(item.get('id'))
         return data
 
     def get_favorites(self):
@@ -278,6 +352,9 @@ class AnimeProAPI:
                     local_path = os.path.join(self.cache_path, filename)
                     if os.path.exists(local_path) and os.path.getsize(local_path) > 20480:
                         item["img"] = f"/{filename}"
+                    sid = item.get("id")
+                    if sid:
+                        item["top_tags"] = self._top_tags_from_cache(sid)
             return favs
         except Exception as e:
             logging.error("get_favorites: %s", e)
@@ -316,6 +393,10 @@ class AnimeProAPI:
             resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/6.6 (github.com/animeasi)'}, proxies=proxies, timeout=10)
             results = resp.json().get('list', [])
             self._process_image_urls(results)
+            for r in results:
+                tags = self._top_tags_from_cache(r.get('id'))
+                if tags:
+                    r['top_tags'] = tags
             return {"status": "success", "results": results}
         except Exception as e:
             logging.error("search_anime failed: keyword=%s, error=%s", keyword, e)
@@ -354,6 +435,13 @@ class AnimeProAPI:
 
     # ─── 本地动画管理 ────────────────────────────────
 
+    def open_local_folder(self):
+        path = self.config.get("local_anime_path", "")
+        if path and os.path.isdir(path):
+            os.startfile(path)
+            return {"status": "success"}
+        return {"status": "error", "message": "路径不存在或未配置"}
+
     def get_anime_episodes(self, anime_name):
         return local_manager.get_anime_episodes(anime_name, self.config.get("local_anime_path", ""), self.db)
 
@@ -368,7 +456,7 @@ if __name__ == '__main__':
     api = AnimeProAPI()
     
     window = webview.create_window(
-        'AnimeAsi v6.6',
+        'AnimeAsi',
         server,
         js_api=api, 
         width=1100, 

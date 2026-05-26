@@ -187,6 +187,9 @@ class AnimeDB:
         sid = data["id"]
         rating = data.get("rating")
         images = data.get("images") or {}
+        rank = data.get("rank")
+        if rank is None and rating:
+            rank = rating.get("rank")
         c.execute(
             """INSERT OR REPLACE INTO subjects
                (id, name, name_cn, url, air_date, air_weekday,
@@ -200,7 +203,7 @@ class AnimeDB:
                 data.get("date"),
                 data.get("air_weekday"),
                 json.dumps(rating, ensure_ascii=False) if rating else None,
-                data.get("rank"),
+                rank,
                 data.get("summary"),
                 images.get("common"),
                 images.get("large"),
