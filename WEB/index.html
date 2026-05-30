@@ -276,12 +276,65 @@
     position: absolute; bottom: 6px;
   }
   .day-btn:not(.today) .today-dot { display: none; }
+  .day-btn.all {
+    background: linear-gradient(135deg, rgba(124,109,250,0.15), rgba(255,107,157,0.1));
+    border-style: dashed;
+    border-color: var(--accent);
+    min-width: 56px; flex: 0.6;
+  }
+  .day-btn.all:hover { border-style: solid; border-color: var(--accent); }
+  .day-btn.all.active {
+    background: linear-gradient(135deg, var(--accent), var(--pink));
+    border-style: solid;
+    box-shadow: 0 6px 20px rgba(124,109,250,0.4);
+  }
 
   /* ── Anime Count Badge ── */
   .count-badge {
     font-size: 11px; font-weight: 600;
     background: var(--bg3); border: 1px solid var(--border);
     border-radius: 99px; padding: 2px 10px; color: var(--txt3);
+  }
+
+  /* ── Sort Bar ── */
+  .sort-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    margin-right: 12px;
+    flex-wrap: wrap;
+  }
+  .sort-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--txt3);
+    margin-right: 6px;
+    flex-shrink: 0;
+  }
+  .sort-btn {
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg3);
+    color: var(--txt2);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .sort-btn:hover {
+    border-color: var(--accent);
+    color: var(--txt1);
+  }
+  .sort-btn.active {
+    background: linear-gradient(135deg, var(--accent), #9b7ffc);
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(124,109,250,0.3);
   }
 
   /* ══════════════════════════════════════
@@ -390,6 +443,45 @@
     color: var(--pink);
     border-color: rgba(255,107,157,0.3);
     box-shadow: 0 0 10px rgba(255,107,157,0.25);
+  }
+  .rating-badge.elite {
+    color: #fff;
+    background: linear-gradient(135deg, rgba(200,140,0,0.7), rgba(255,180,0,0.5));
+    border-color: rgba(255,200,50,0.6);
+    box-shadow: 0 0 16px rgba(255,180,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
+    text-shadow: 0 0 6px rgba(255,200,100,0.6);
+  }
+  [data-theme="light"] .rating-badge.elite {
+    color: #fff;
+    background: linear-gradient(135deg, rgba(180,120,0,0.8), rgba(220,150,0,0.6));
+    box-shadow: 0 0 14px rgba(200,140,0,0.35);
+    text-shadow: none;
+  }
+
+  /* ── Popularity Highlights ── */
+  .anime-card.elite {
+    border-color: rgba(255,215,0,0.4);
+    box-shadow: 0 0 0 1px rgba(255,215,0,0.15), 0 4px 20px rgba(255,215,0,0.08);
+  }
+  .anime-card.elite:hover {
+    border-color: #ffd700;
+    box-shadow: 0 0 0 1px rgba(255,215,0,0.3), 0 12px 40px rgba(255,215,0,0.15);
+    transform: translateY(-4px);
+  }
+  .anime-card.popular {
+    border-color: rgba(255,107,157,0.3);
+    box-shadow: 0 0 0 1px rgba(255,107,157,0.08);
+  }
+  .anime-card.popular:hover {
+    border-color: var(--pink);
+    box-shadow: 0 0 0 1px rgba(255,107,157,0.2), 0 12px 40px rgba(255,107,157,0.1);
+    transform: translateY(-3px);
+  }
+  [data-theme="light"] .anime-card.elite {
+    box-shadow: 0 0 0 1px rgba(255,215,0,0.2), 0 4px 20px rgba(255,215,0,0.06);
+  }
+  [data-theme="light"] .anime-card.popular {
+    box-shadow: 0 0 0 1px rgba(255,107,157,0.1);
   }
 
   /* Heart btn */
@@ -845,6 +937,12 @@
 
   <div class="section-header">
     <span class="section-title" id="gridTitle">今日放送</span>
+    <div class="sort-bar">
+      <span class="sort-label">排序</span>
+      <button class="sort-btn active" data-sort="default" onclick="setActiveSort('default')">默认</button>
+      <button class="sort-btn" data-sort="rating" onclick="setActiveSort('rating')">评分 ↓</button>
+      <button class="sort-btn" data-sort="rank" onclick="setActiveSort('rank')">人气 ↓</button>
+    </div>
   </div>
   <div class="card-grid" id="cardGrid"></div>
 </div>
@@ -982,6 +1080,20 @@
           <label class="form-label">密码</label>
           <input class="form-input" id="set_qbt_pass" type="password">
         </div>
+        <div class="toggle-wrap">
+          <div>
+            <div class="toggle-label">自动启动 qBittorrent</div>
+            <div class="toggle-sub">推送下载时若未运行则自动启动</div>
+          </div>
+          <div class="toggle-switch" id="set_qbt_auto_launch" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="form-row" style="margin-top: 8px;">
+          <label class="form-label">qBittorrent 程序路径（可选）</label>
+          <div class="path-row" style="margin-bottom: 0;">
+            <input class="form-input" id="set_qbt_exe_path" type="text" style="height: 38px;" placeholder="留空则自动检测">
+            <button class="btn-browse" onclick="handleBrowseFile('set_qbt_exe_path')">浏览</button>
+          </div>
+        </div>
       </div>
       <div class="settings-section">
         <div class="settings-section-title">RSS 订阅源</div>
@@ -1057,6 +1169,7 @@ let globalBgmData = [];
 let globalFavorites = [];
 let globalRssSources = [];
 let activeDay = (new Date().getDay() + 6) % 7;
+let activeSort = 'default';
 const TODAY_IDX = activeDay;
 
 function safeCreateIcons() {
@@ -1184,17 +1297,29 @@ function buildScheduleButtons() {
     if(!wrap) return;
     wrap.innerHTML = '';
     const dayNames = ["周一","周二","周三","周四","周五","周六","周日"];
-    
+
+    // 「全部」按钮
+    const allBtn = document.createElement('div');
+    allBtn.className = `day-btn all${activeDay === -1 ? ' active' : ''}`;
+    allBtn.innerHTML = `<span class="day-date">ALL</span><span class="day-name">全部</span>`;
+    allBtn.onclick = () => {
+        activeDay = -1;
+        activeSort = 'default';
+        buildScheduleButtons();
+        renderAnimeGrid();
+    };
+    wrap.appendChild(allBtn);
+
     dayNames.forEach((name, i) => {
         const btn = document.createElement('div');
         btn.className = `day-btn${i===activeDay?' active':''}${i===TODAY_IDX?' today':''}`;
-        
+
         btn.innerHTML = `
             <span class="day-date">${WEEK_DATES[i]}</span>
             <span class="day-name">${name}</span>
             ${i===TODAY_IDX ? '<span class="today-dot"></span>' : ''}
         `;
-        
+
         btn.onclick = () => {
             activeDay = i;
             buildScheduleButtons();
@@ -1212,13 +1337,31 @@ async function renderAnimeGrid() {
     grid.innerHTML = '';
 
     const config = await pywebview.api.get_init_config();
-    let items = globalBgmData[activeDay]?.items || [];
+
+    // 全部模式：展平所有天
+    let items;
+    if (activeDay === -1) {
+        items = [];
+        globalBgmData.forEach(day => {
+            if (day.items) items.push(...day.items);
+        });
+    } else {
+        items = globalBgmData[activeDay]?.items || [];
+    }
 
     if (config.only_show_japanese) {
         items = items.filter(item => isJapaneseAnime(item));
     }
 
+    // 排序
+    if (activeSort === 'rating') {
+        items = [...items].sort((a, b) => (b.rating?.score || 0) - (a.rating?.score || 0));
+    } else if (activeSort === 'rank') {
+        items = [...items].sort((a, b) => (b.collection?.collect || 0) - (a.collection?.collect || 0));
+    }
+
     document.getElementById('countBadge').textContent = `${items.length} 部`;
+    buildSortBar();
 
     // ⭐ 关键优化
     const fragment = document.createDocumentFragment();
@@ -1230,8 +1373,15 @@ async function renderAnimeGrid() {
         const isFav = globalFavorites.some(f => f.name === name);
         const heartClass = isFav ? 'heart-btn liked' : 'heart-btn';
         const rating = item.rating;
+
+        // 人气等级
+        const popularityClass = (!item.rank && !rating?.score) ? '' :
+            (item.rank != null && item.rank <= 50 || rating?.score >= 8.5) ? 'elite' :
+            (item.rank != null && item.rank <= 500 || rating?.score >= 7.0) ? 'popular' : '';
+
+        const tierBadgeClass = popularityClass === 'elite' ? ' elite' : '';
         const ratingHtml = rating?.score
-            ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}">★ ${rating.score.toFixed(1)}</div>`
+            ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}${tierBadgeClass}">★ ${rating.score.toFixed(1)}</div>`
             : '';
         const tags = item.top_tags;
         const tagsHtml = tags?.length
@@ -1239,7 +1389,7 @@ async function renderAnimeGrid() {
             : '';
 
         const card = document.createElement('div');
-        card.className = 'anime-card';
+        card.className = `anime-card${popularityClass ? ' ' + popularityClass : ''}`;
 
         card.innerHTML = `
             <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${item.id || 0})" style="cursor:pointer">
@@ -1277,6 +1427,21 @@ async function renderAnimeGrid() {
     requestAnimationFrame(() => {
         safeCreateIcons();
     });
+}
+
+// ─── Sort ─────────────────────────────────────────
+
+function buildSortBar() {
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.sort === activeSort);
+    });
+}
+
+function setActiveSort(sortType) {
+    if (activeSort === sortType) return;
+    activeSort = sortType;
+    buildSortBar();
+    renderAnimeGrid();
 }
 
 // 处理爱心点击逻辑
@@ -1371,10 +1536,14 @@ function renderFavGrid() {
 
     globalFavorites.forEach(item => {
         const card = document.createElement('div');
-        card.className = 'anime-card';
         const favRating = item.rating;
+        const favPopularityClass = (!item.rank && !favRating?.score) ? '' :
+            (item.rank != null && item.rank <= 50 || favRating?.score >= 8.5) ? 'elite' :
+            (item.rank != null && item.rank <= 500 || favRating?.score >= 7.0) ? 'popular' : '';
+        const favTierClass = favPopularityClass === 'elite' ? ' elite' : '';
+        card.className = `anime-card${favPopularityClass ? ' ' + favPopularityClass : ''}`;
         const favRatingHtml = favRating?.score
-            ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}">★ ${favRating.score.toFixed(1)}</div>`
+            ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}${favTierClass}">★ ${favRating.score.toFixed(1)}</div>`
             : '';
         const favTags = item.top_tags;
         const favTagsHtml = favTags?.length
@@ -1493,6 +1662,16 @@ async function handleBrowseFolder(targetId) {
     }
 }
 
+async function handleBrowseFile(targetId) {
+    const path = await pywebview.api.select_file();
+    if (path) {
+        const inputEl = document.getElementById(targetId);
+        if (inputEl) {
+            inputEl.value = path;
+        }
+    }
+}
+
 async function openAnimeFolder() {
     await pywebview.api.open_local_folder();
 }
@@ -1528,16 +1707,18 @@ function renderAnimeSearchGrid(keyword, items) {
 
     items.slice(0, 18).forEach(item => {
         const name = item.name_cn || item.name;
-        // 如果搜到的没有图片，给个占位符
         const img = item.images?.large || item.images?.common || 'https://via.placeholder.com/120x162?text=No+Cover';
         const url = item.url || `https://bgm.tv/subject/${item.id}`;
-        
-        // 检查是不是已经收藏了
+
         const isFav = globalFavorites.some(f => f.name === name);
         const heartClass = isFav ? 'heart-btn liked' : 'heart-btn';
         const sRating = item.rating;
+        const sPopularityClass = (!item.rank && !sRating?.score) ? '' :
+            (item.rank != null && item.rank <= 50 || sRating?.score >= 8.5) ? 'elite' :
+            (item.rank != null && item.rank <= 500 || sRating?.score >= 7.0) ? 'popular' : '';
+        const sTierClass = sPopularityClass === 'elite' ? ' elite' : '';
         const sRatingHtml = sRating?.score
-            ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}">★ ${sRating.score.toFixed(1)}</div>`
+            ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}${sTierClass}">★ ${sRating.score.toFixed(1)}</div>`
             : '';
         const sTags = item.top_tags;
         const sTagsHtml = sTags?.length
@@ -1545,7 +1726,7 @@ function renderAnimeSearchGrid(keyword, items) {
             : '';
 
         const card = document.createElement('div');
-        card.className = 'anime-card';
+        card.className = `anime-card${sPopularityClass ? ' ' + sPopularityClass : ''}`;
         card.innerHTML = `
             <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${item.id || 0})" style="cursor:pointer">
                 <img loading="lazy" decoding="async" src="${img}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
@@ -1578,6 +1759,14 @@ function fillSettings(c) {
     if(p) p.value = c.local_anime_path || '';
     if(h) h.value = c.qbt_host || '';
     if(ps) ps.value = c.qbt_password || '';
+
+    const alToggle = document.getElementById('set_qbt_auto_launch');
+    const exePath = document.getElementById('set_qbt_exe_path');
+    if(alToggle) {
+        if(c.qbt_auto_launch !== false) alToggle.classList.add('on');
+        else alToggle.classList.remove('on');
+    }
+    if(exePath) exePath.value = c.qbt_exe_path || '';
     
     if(proxyToggle) {
         if(c.use_proxy) proxyToggle.classList.add('on');
@@ -1600,6 +1789,8 @@ async function saveAppSettings() {
         local_anime_path: document.getElementById('set_anime_path').value,
         qbt_host: document.getElementById('set_qbt_host').value,
         qbt_password: document.getElementById('set_qbt_pass').value,
+        qbt_auto_launch: document.getElementById('set_qbt_auto_launch')?.classList.contains('on') ?? true,
+        qbt_exe_path: document.getElementById('set_qbt_exe_path')?.value || '',
         use_proxy: document.getElementById('set_use_proxy')?.classList.contains('on') || false,
         proxy_address: document.getElementById('set_proxy_address')?.value || '127.0.0.1:7890',
         only_show_japanese: document.getElementById('set_only_jp')?.classList.contains('on') || false

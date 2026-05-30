@@ -55,6 +55,11 @@ cd E:/CC/test && source venv/Scripts/activate && pyinstaller build.spec
 - **内联 onclick**: 前端事件用 `onclick` 属性（非事件监听），函数必须是 **全局作用域**
 - **escAttr**: 在 onclick 中嵌入用户数据（番剧名/URL 等）时，必须用 `escAttr()` 转义。该函数会转义 `\` `'` `"` 三个字符，防止 XSS。注意：`encodeURIComponent` 不编码单引号，不可用于此场景。
 
+## Tutorial Maintenance
+
+- 新手引导教程位于 `WEB/index.html`，每次**新增面向用户的重大功能**（如新按钮、新操作流程、新界面区域）时，必须同步更新教程内容和步骤
+- 教程通过 `localStorage` 标记首次启动状态，设置页提供「重新观看教程」按钮
+
 ## Packaging Notes
 
 - 使用 `build.spec`（PyInstaller spec 文件）

@@ -8,6 +8,9 @@ import requests
 import re
 import urllib.parse
 import logging
+import subprocess
+import time
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, asdict
 from typing import Optional
@@ -144,24 +147,80 @@ def search_torrents(anime_name: str, sources: Optional[list[dict]] = None, proxi
     return "success", all_results
 
 
-def push_to_qbittorrent(torrent_url: str, qbt_config: dict) -> tuple[str, str]:
-    """
-    下载引擎：接收种子/磁力链接，推送到 qBittorrent。
-    返回 ("success", msg) 或 ("error", msg)
-    """
-    import qbittorrentapi
+def find_qbt_exe(user_path: str = "") -> Optional[str]:
+    """查找 qBittorrent 可执行文件路径。"""
+    if user_path and os.path.isfile(user_path):
+        return user_path
 
+    candidates = [
+        os.path.expandvars(r"%PROGRAMFILES%\qBittorrent\qbittorrent.exe"),
+        os.path.expandvars(r"%PROGRAMFILES(X86)%\qBittorrent\qbittorrent.exe"),
+        os.path.expandvars(r"%LOCALAPPDATA%\qBittorrent\qbittorrent.exe"),
+    ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def _try_qbt_connect(qbt_config: dict):
+    """尝试连接 qBittorrent Web API，成功返回 client，失败返回 None。"""
+    import qbittorrentapi
     try:
-        qbt_client = qbittorrentapi.Client(
+        client = qbittorrentapi.Client(
             host=qbt_config.get("host", "127.0.0.1:8080"),
             username=qbt_config.get("username", "admin"),
             password=qbt_config.get("password", ""),
         )
-        qbt_client.auth_log_in()
+        client.auth_log_in()
+        return client
+    except Exception:
+        return None
 
-        save_path = qbt_config.get("save_path", "")
-        qbt_client.torrents_add(urls=torrent_url, save_path=save_path)
 
-        return "success", "任务已成功添加到 qBittorrent！"
+def push_to_qbittorrent(torrent_url: str, qbt_config: dict,
+                        auto_launch: bool = False,
+                        qbt_exe_path: str = "") -> tuple[str, str]:
+    """
+    下载引擎：接收种子/磁力链接，推送到 qBittorrent。
+    若 auto_launch 为 True 且连接失败，尝试自动启动 qBittorrent 后重试。
+    返回 ("success", msg) 或 ("error", msg)
+    """
+    import qbittorrentapi
+
+    client = _try_qbt_connect(qbt_config)
+    if client is not None:
+        try:
+            save_path = qbt_config.get("save_path", "")
+            client.torrents_add(urls=torrent_url, save_path=save_path)
+            return "success", "任务已成功添加到 qBittorrent！"
+        except Exception as e:
+            return "error", f"推送到下载器失败:\n{e}"
+
+    if not auto_launch:
+        return "error", "无法连接到 qBittorrent，请确保它正在运行且已开启 WebUI。\n\n可在设置中开启「自动启动 qBittorrent」。"
+
+    exe_path = find_qbt_exe(qbt_exe_path)
+    if not exe_path:
+        return "error", (
+            "无法连接到 qBittorrent，且未找到 qbittorrent.exe。\n\n"
+            "请在设置中手动指定 qBittorrent 的安装路径。"
+        )
+
+    try:
+        subprocess.Popen(exe_path, creationflags=0x08000000 if os.name == 'nt' else 0)
     except Exception as e:
-        return "error", f"推送到下载器失败:\n{e}"
+        return "error", f"启动 qBittorrent 失败:\n{e}"
+
+    for _ in range(20):
+        time.sleep(0.5)
+        client = _try_qbt_connect(qbt_config)
+        if client is not None:
+            try:
+                save_path = qbt_config.get("save_path", "")
+                client.torrents_add(urls=torrent_url, save_path=save_path)
+                return "success", "已自动启动 qBittorrent，任务添加成功！"
+            except Exception as e:
+                return "error", f"qBittorrent 已启动，但推送失败:\n{e}"
+
+    return "error", "qBittorrent 已启动，但 WebUI 在 10 秒内未就绪，请检查 WebUI 设置。"

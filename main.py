@@ -95,6 +95,8 @@ class AnimeProAPI:
             "local_anime_path": "",
             "qbt_host": "127.0.0.1:8080",
             "qbt_password": "",
+            "qbt_auto_launch": True,
+            "qbt_exe_path": "",
             "rss_sources": [
                 {"name": "蜜柑计划", "url_template": "https://mikanani.me/RSS/Search?searchstr={keyword}", "enabled": True},
                 {"name": "Nyaa.si", "url_template": "https://nyaa.si/?page=rss&q={keyword}&c=0_0&f=0", "enabled": True},
@@ -383,6 +385,13 @@ class AnimeProAPI:
         root = Tk(); root.withdraw(); path = filedialog.askdirectory(); root.destroy()
         return path
 
+    def select_file(self):
+        root = Tk(); root.withdraw(); path = filedialog.askopenfilename(
+            title="选择 qBittorrent 程序",
+            filetypes=[("可执行文件", "*.exe"), ("所有文件", "*.*")]
+        ); root.destroy()
+        return path
+
     def search_anime(self, keyword):
         url = f"https://api.bgm.tv/search/subject/{urllib.parse.quote(keyword)}?type=2&responseGroup=large"
         proxies = None
@@ -411,8 +420,16 @@ class AnimeProAPI:
         return {"status": s, "results": r}
 
     def push_download(self, url, name, path):
-        conf = {"host": self.config.get("qbt_host"), "password": self.config.get("qbt_password"), "save_path": path}
-        s, m = downloader.push_to_qbittorrent(url, conf)
+        conf = {
+            "host": self.config.get("qbt_host"),
+            "password": self.config.get("qbt_password"),
+            "save_path": path,
+        }
+        s, m = downloader.push_to_qbittorrent(
+            url, conf,
+            auto_launch=self.config.get("qbt_auto_launch", True),
+            qbt_exe_path=self.config.get("qbt_exe_path", ""),
+        )
         return {"status": s, "message": m}
 
     # ─── RSS 订阅源管理 ────────────────────────────────
