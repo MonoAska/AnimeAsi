@@ -93,19 +93,35 @@ def get_anime_episodes(anime_name: str, root_dir: str, db) -> dict:
     return {"anime_name": anime_name, "episodes": episodes}
 
 
-def play_episode(anime_name: str, episode_num: int, file_path: str, db) -> dict:
-    if not os.path.exists(file_path):
+def play_episode(anime_name: str, episode_num: int, file_path: str, root_dir: str, db) -> dict:
+    if not root_dir or not os.path.isdir(root_dir):
+        return {"status": "error", "message": "Local anime directory is not configured"}
+
+    root_path = os.path.realpath(root_dir)
+    resolved_path = os.path.realpath(file_path)
+    root_compare = os.path.normcase(root_path)
+    path_compare = os.path.normcase(resolved_path)
+    try:
+        if os.path.commonpath([root_compare, path_compare]) != root_compare:
+            return {"status": "error", "message": "Refusing to open a file outside the anime directory"}
+    except ValueError:
+        return {"status": "error", "message": "Refusing to open a file outside the anime directory"}
+
+    if os.path.splitext(resolved_path)[1].lower() not in VIDEO_EXTENSIONS:
+        return {"status": "error", "message": "Unsupported video format"}
+
+    if not os.path.isfile(resolved_path):
         return {"status": "error", "message": f"文件不存在: {file_path}"}
 
     try:
         if os.name == "nt":
-            os.startfile(file_path)
+            os.startfile(resolved_path)
         elif os.name == "darwin":
-            subprocess.Popen(["open", file_path])
+            subprocess.Popen(["open", resolved_path])
         else:
-            subprocess.Popen(["xdg-open", file_path])
+            subprocess.Popen(["xdg-open", resolved_path])
     except Exception as e:
-        logging.error("play_episode: failed to open %s: %s", file_path, e)
+        logging.error("play_episode: failed to open %s: %s", resolved_path, e)
         return {"status": "error", "message": str(e)}
 
     db.mark_watched(anime_name, episode_num)

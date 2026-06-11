@@ -1,16 +1,34 @@
+# Python
 __pycache__/
-.claude/
-.cursor/
-cache_covers/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 venv/
+
+# Local tools and editors
+.agents/
+.claude/
+.codex/
+.cursor/
+.idea/
+.vscode/
+
+# Runtime data
+cache_covers/
 bgm_cache.json
 config.json
 favorites.json
 error.log
 watch_history.json
+subject_tags_cache.json
+animeasi.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Packaging output
 dist/
 build/
-animeasi.db
-animeasi.db-shm
-animeasi.db-wal
-subject_tags_cache.json

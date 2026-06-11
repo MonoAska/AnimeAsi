@@ -221,6 +221,43 @@
   }
 
   /* ── Weekly Schedule ── */
+  .season-bar {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--r); padding: 12px 20px;
+    margin-bottom: 28px; box-shadow: var(--shadow-sm);
+  }
+  .season-arrow {
+    width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+    background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r-sm);
+    color: var(--txt2); font-family: inherit; font-size: 13px; cursor: pointer;
+    transition: all 0.2s; flex-shrink: 0;
+  }
+  .season-arrow:hover { border-color: var(--accent); color: var(--txt1); background: var(--bg4); }
+  .season-label {
+    font-size: 14px; font-weight: 700; color: var(--txt1);
+    min-width: 140px; text-align: center; flex-shrink: 0;
+  }
+  .season-label:hover { color: var(--accent); }
+  .season-picker {
+    display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+  }
+  .season-pick-arrow {
+    width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--txt2); font-family: inherit; font-size: 10px; cursor: pointer;
+  }
+  .season-pick-arrow:hover { border-color: var(--accent); color: var(--txt1); }
+  .season-pick-year { font-size: 13px; font-weight: 600; color: var(--txt1); min-width: 40px; text-align: center; }
+  .season-pick-sep { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
+  .season-pick-btn {
+    height: 24px; padding: 0 8px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--bg3); color: var(--txt2); font-family: inherit; font-size: 11px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .season-pick-btn:hover { border-color: var(--accent); color: var(--txt1); }
+  .season-pick-btn.sel { background: var(--accent); border-color: var(--accent); color: #fff; }
+
   .schedule-wrap {
     background: var(--bg2);
     border: 1px solid var(--border);
@@ -345,6 +382,28 @@
     grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
     gap: 16px;
   }
+  .empty-grid-state {
+    grid-column: 1 / -1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 60px 20px; color: var(--txt3); text-align: center; gap: 8px;
+  }
+  .empty-grid-state p { font-size: 14px; color: var(--txt2); }
+  .season-state {
+    grid-column: 1 / -1;
+    min-height: 320px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 60px 20px; color: var(--txt3); text-align: center; gap: 12px;
+  }
+  .season-state-title { color: var(--txt1); font-size: 15px; font-weight: 600; }
+  .season-state-subtitle { color: var(--txt3); font-size: 12px; max-width: 420px; line-height: 1.7; }
+  .season-spinner {
+    width: 34px; height: 34px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: season-spin 0.8s linear infinite;
+  }
+  @keyframes season-spin { to { transform: rotate(360deg); } }
 
   .anime-card {
     background: var(--card-bg);
@@ -439,7 +498,7 @@
     z-index: 1;
     pointer-events: none;
   }
-  .rating-badge.top {
+  .rating-badge.popular {
     color: var(--pink);
     border-color: rgba(255,107,157,0.3);
     box-shadow: 0 0 10px rgba(255,107,157,0.25);
@@ -931,7 +990,24 @@
     <span class="count-badge" id="countBadge">同步中...</span>
   </div>
 
-  <div class="schedule-wrap">
+  <div class="season-bar" id="seasonBar" style="display:none">
+    <button class="season-arrow" onclick="prevSeason()" title="上一季">◀</button>
+    <span class="season-label" id="seasonLabel" onclick="toggleSeasonPicker()" style="cursor:pointer" title="点击跳转"></span>
+    <div class="season-picker" id="seasonPicker" style="display:none">
+      <button class="season-pick-arrow" onclick="seasonPickerYear(-1)">◀</button>
+      <span class="season-pick-year" id="seasonPickYear"></span>
+      <button class="season-pick-arrow" onclick="seasonPickerYear(1)">▶</button>
+      <span class="season-pick-sep"></span>
+      <button class="season-pick-btn" data-m="1" onclick="jumpSeason(1)">冬</button>
+      <button class="season-pick-btn" data-m="4" onclick="jumpSeason(4)">春</button>
+      <button class="season-pick-btn" data-m="7" onclick="jumpSeason(7)">夏</button>
+      <button class="season-pick-btn" data-m="10" onclick="jumpSeason(10)">秋</button>
+    </div>
+    <button class="season-arrow" onclick="nextSeason()" title="下一季">▶</button>
+    <button class="btn-ghost" onclick="backToCurrentSeason()" style="height:28px;padding:0 12px;font-size:11px;">回到当季</button>
+  </div>
+
+  <div class="schedule-wrap" id="scheduleWrap">
     <div class="schedule-days" id="scheduleDays"></div>
   </div>
 
@@ -1140,7 +1216,7 @@
       <div class="settings-section">
         <div class="settings-section-title">关于</div>
         <div class="about-content">
-          <div class="about-row"><span class="about-label">版本</span><span class="about-value">v6.7</span></div>
+          <div class="about-row"><span class="about-label">版本</span><span class="about-value">v1.7.0</span></div>
           <div class="about-row"><span class="about-label">数据来源</span><span class="about-value">Bangumi 番组计划</span></div>
         </div>
       </div>
@@ -1170,7 +1246,13 @@ let globalFavorites = [];
 let globalRssSources = [];
 let activeDay = (new Date().getDay() + 6) % 7;
 let activeSort = 'default';
+let seasonYear = null;
+let seasonMonth = null;
+let globalSeasonItems = null;
+let seasonLoadToken = 0;
+let seasonIsLoading = false;
 const TODAY_IDX = activeDay;
+const SEASON_NAMES = {1:'冬', 4:'春', 7:'夏', 10:'秋'};
 
 function safeCreateIcons() {
     try {
@@ -1327,6 +1409,32 @@ function buildScheduleButtons() {
         };
         wrap.appendChild(btn);
     });
+
+    const now = new Date();
+    const curSeasonMonth = Math.floor(now.getMonth() / 3) * 3 + 1;
+    const curSeasonYear = now.getFullYear();
+    let prevM = curSeasonMonth - 3, prevY = curSeasonYear;
+    if (prevM < 1) { prevM = 10; prevY--; }
+    let nextM = curSeasonMonth + 3, nextY = curSeasonYear;
+    if (nextM > 10) { nextM = 1; nextY++; }
+
+    const sep = document.createElement('span');
+    sep.style.cssText = 'width:1px;height:28px;background:var(--border);flex-shrink:0;align-self:center';
+    wrap.appendChild(sep);
+
+    const prevBtn = document.createElement('div');
+    prevBtn.className = 'day-btn';
+    prevBtn.style.cssText = 'min-width:44px;flex:0.4';
+    prevBtn.innerHTML = `<span class="day-date" style="font-size:10px">${prevY}</span><span class="day-name" style="font-size:11px">◀ ${SEASON_NAMES[prevM]}</span>`;
+    prevBtn.onclick = () => { showSeason(prevY, prevM); };
+    wrap.appendChild(prevBtn);
+
+    const nextBtn = document.createElement('div');
+    nextBtn.className = 'day-btn';
+    nextBtn.style.cssText = 'min-width:44px;flex:0.4';
+    nextBtn.innerHTML = `<span class="day-date" style="font-size:10px">${nextY}</span><span class="day-name" style="font-size:11px">${SEASON_NAMES[nextM]} ▶</span>`;
+    nextBtn.onclick = () => { showSeason(nextY, nextM); };
+    wrap.appendChild(nextBtn);
 }
 
 // 💡 修复 2：去掉了重复套娃的 function 声明
@@ -1355,9 +1463,9 @@ async function renderAnimeGrid() {
 
     // 排序
     if (activeSort === 'rating') {
-        items = [...items].sort((a, b) => (b.rating?.score || 0) - (a.rating?.score || 0));
+        items = [...items].sort(compareByBangumiRank);
     } else if (activeSort === 'rank') {
-        items = [...items].sort((a, b) => (b.collection?.collect || 0) - (a.collection?.collect || 0));
+        items = [...items].sort((a, b) => popularityCount(b) - popularityCount(a));
     }
 
     document.getElementById('countBadge').textContent = `${items.length} 部`;
@@ -1375,37 +1483,35 @@ async function renderAnimeGrid() {
         const rating = item.rating;
 
         // 人气等级
-        const popularityClass = (!item.rank && !rating?.score) ? '' :
-            (item.rank != null && item.rank <= 50 || rating?.score >= 8.5) ? 'elite' :
-            (item.rank != null && item.rank <= 500 || rating?.score >= 7.0) ? 'popular' : '';
+        const popularityClass = popularLevel(rating, item.rank);
 
-        const tierBadgeClass = popularityClass === 'elite' ? ' elite' : '';
+        const tierBadgeClass = popularityClass ? ' ' + popularityClass : '';
         const ratingHtml = rating?.score
-            ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}${tierBadgeClass}">★ ${rating.score.toFixed(1)}</div>`
+            ? `<div class="rating-badge${tierBadgeClass}">★ ${rating.score.toFixed(1)}</div>`
             : '';
         const tags = item.top_tags;
         const tagsHtml = tags?.length
-            ? `<div class="card-tags">${tags.map(t => `<span class="tag-chip">${t}</span>`).join('')}</div>`
+            ? `<div class="card-tags">${tags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</div>`
             : '';
 
         const card = document.createElement('div');
         card.className = `anime-card${popularityClass ? ' ' + popularityClass : ''}`;
 
         card.innerHTML = `
-            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${item.id || 0})" style="cursor:pointer">
+            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${safeNumber(item.id)})" style="cursor:pointer">
                 <img
                     loading="lazy"
                     decoding="async"
-                    src="${img}"
+                    src="${escHtml(img)}"
                     onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'"
                 >
                 ${ratingHtml}
                 <div class="card-overlay" style="pointer-events:none">
-                    <div class="card-overlay-title">${name}</div>
+                    <div class="card-overlay-title">${escapeHtml(name)}</div>
                     ${tagsHtml}
                 </div>
 
-                <div class="${heartClass}" onclick="handleToggleFav(event, ${item.id || 0}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(item.url)}', ${item.rating?.score || 0}, ${item.rank || 0}, this)">
+                <div class="${heartClass}" onclick="handleToggleFav(event, ${safeNumber(item.id)}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(item.url)}', ${safeNumber(item.rating?.score)}, ${safeNumber(item.rank)}, this)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
                     </svg>
@@ -1441,7 +1547,12 @@ function setActiveSort(sortType) {
     if (activeSort === sortType) return;
     activeSort = sortType;
     buildSortBar();
-    renderAnimeGrid();
+    if (seasonYear != null) {
+        if (seasonIsLoading) return;
+        renderSeasonGrid();
+    } else {
+        renderAnimeGrid();
+    }
 }
 
 // 处理爱心点击逻辑
@@ -1480,7 +1591,7 @@ async function openDetailModal(subjectId) {
 
     try {
         const d = await pywebview.api.get_subject_detail(subjectId);
-        if (d.error) { body.innerHTML = `<div style="text-align:center;padding:40px;color:var(--txt3);">加载失败: ${d.error}</div>`; return; }
+        if (d.error) { body.innerHTML = `<div style="text-align:center;padding:40px;color:var(--txt3);">加载失败: ${escapeHtml(d.error)}</div>`; return; }
 
         const img = d.images?.large || d.images?.common || '';
         const name = d.name_cn || d.name || '';
@@ -1488,10 +1599,10 @@ async function openDetailModal(subjectId) {
         const ratingHtml = d.rating?.score
             ? `<span class="detail-score${d.rank && d.rank < 1000 ? ' top' : ''}">★ ${d.rating.score.toFixed(1)}</span>`
             : '';
-        const rankHtml = d.rank ? `<span class="detail-rank">排名 #${d.rank}</span>` : '';
-        const dateHtml = d.air_date ? `<span class="detail-date">${d.air_date}</span>` : '';
+        const rankHtml = d.rank ? `<span class="detail-rank">排名 #${escapeHtml(d.rank)}</span>` : '';
+        const dateHtml = d.air_date ? `<span class="detail-date">${escapeHtml(d.air_date)}</span>` : '';
         const tagsHtml = d.top_tags?.length
-            ? `<div class="detail-tags">${d.top_tags.map(t => `<span class="detail-tag">${t}</span>`).join('')}</div>`
+            ? `<div class="detail-tags">${d.top_tags.map(t => `<span class="detail-tag">${escapeHtml(t)}</span>`).join('')}</div>`
             : '';
         const summary = d.summary || '暂无简介';
 
@@ -1501,16 +1612,16 @@ async function openDetailModal(subjectId) {
         body.innerHTML = `
             <div class="detail-hero">
                 <div class="detail-poster">
-                    <img src="${img}" onerror="this.style.display='none'">
+                    <img src="${escHtml(img)}" onerror="this.style.display='none'">
                 </div>
                 <div class="detail-info">
-                    <div class="detail-name">${name}</div>
-                    ${nameSub ? `<div class="detail-name-cn">${nameSub}</div>` : ''}
+                    <div class="detail-name">${escapeHtml(name)}</div>
+                    ${nameSub ? `<div class="detail-name-cn">${escapeHtml(nameSub)}</div>` : ''}
                     <div class="detail-meta">${ratingHtml}${rankHtml}${dateHtml}</div>
                     ${tagsHtml}
                 </div>
             </div>
-            <div class="detail-summary">${summary.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+            <div class="detail-summary">${escapeHtml(summary)}</div>
         `;
 
         footer.innerHTML = `
@@ -1537,30 +1648,28 @@ function renderFavGrid() {
     globalFavorites.forEach(item => {
         const card = document.createElement('div');
         const favRating = item.rating;
-        const favPopularityClass = (!item.rank && !favRating?.score) ? '' :
-            (item.rank != null && item.rank <= 50 || favRating?.score >= 8.5) ? 'elite' :
-            (item.rank != null && item.rank <= 500 || favRating?.score >= 7.0) ? 'popular' : '';
-        const favTierClass = favPopularityClass === 'elite' ? ' elite' : '';
+        const favPopularityClass = popularLevel(favRating, item.rank);
+        const favTierClass = favPopularityClass ? ' ' + favPopularityClass : '';
         card.className = `anime-card${favPopularityClass ? ' ' + favPopularityClass : ''}`;
         const favRatingHtml = favRating?.score
-            ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}${favTierClass}">★ ${favRating.score.toFixed(1)}</div>`
+            ? `<div class="rating-badge${favTierClass}">★ ${favRating.score.toFixed(1)}</div>`
             : '';
         const favTags = item.top_tags;
         const favTagsHtml = favTags?.length
-            ? `<div class="card-tags">${favTags.map(t => `<span class="tag-chip">${t}</span>`).join('')}</div>`
+            ? `<div class="card-tags">${favTags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</div>`
             : '';
         card.innerHTML = `
-            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${item.id || 0})" style="cursor:pointer">
-                <img src="${item.img}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
+            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${safeNumber(item.id)})" style="cursor:pointer">
+                <img src="${escHtml(item.img)}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
                 ${favRatingHtml}
                 <div class="play-btn-overlay" onclick="event.stopPropagation(); openEpisodeModal('${escAttr(item.name)}')">
                   <div class="play-circle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 19,12 8,19"/></svg></div>
                 </div>
                 <div class="card-overlay" style="pointer-events:none">
-                    <div class="card-overlay-title">${item.name}</div>
+                    <div class="card-overlay-title">${escapeHtml(item.name)}</div>
                     ${favTagsHtml}
                 </div>
-                <div class="heart-btn liked" onclick="(async () => { await handleToggleFav(event, ${item.id || 0}, '${escAttr(item.name)}', '${escAttr(item.img)}', '${escAttr(item.url)}', 0, 0, event.currentTarget); renderFavGrid(); renderAnimeGrid(); })()">
+                <div class="heart-btn liked" onclick="(async () => { await handleToggleFav(event, ${safeNumber(item.id)}, '${escAttr(item.name)}', '${escAttr(item.img)}', '${escAttr(item.url)}', 0, 0, event.currentTarget); renderFavGrid(); renderAnimeGrid(); })()">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                 </div>
             </div>
@@ -1623,7 +1732,7 @@ function renderTorrentList(animeName, results) {
         const row = document.createElement('div');
         row.className = 'torrent-row';
         row.innerHTML = `
-            <div class="torrent-info"><div class="torrent-name" title="${t.title}">${t.title}</div></div>
+            <div class="torrent-info"><div class="torrent-name" title="${escHtml(t.title)}">${escapeHtml(t.title)}</div></div>
             <button class="btn-push" onclick="executePush('${escAttr(t.url)}', '${escAttr(animeName)}', this)">推送</button>
         `;
         list.appendChild(row);
@@ -1713,29 +1822,27 @@ function renderAnimeSearchGrid(keyword, items) {
         const isFav = globalFavorites.some(f => f.name === name);
         const heartClass = isFav ? 'heart-btn liked' : 'heart-btn';
         const sRating = item.rating;
-        const sPopularityClass = (!item.rank && !sRating?.score) ? '' :
-            (item.rank != null && item.rank <= 50 || sRating?.score >= 8.5) ? 'elite' :
-            (item.rank != null && item.rank <= 500 || sRating?.score >= 7.0) ? 'popular' : '';
-        const sTierClass = sPopularityClass === 'elite' ? ' elite' : '';
+        const sPopularityClass = popularLevel(sRating, item.rank);
+        const sTierClass = sPopularityClass ? ' ' + sPopularityClass : '';
         const sRatingHtml = sRating?.score
-            ? `<div class="rating-badge${item.rank && item.rank < 1000 ? ' top' : ''}${sTierClass}">★ ${sRating.score.toFixed(1)}</div>`
+            ? `<div class="rating-badge${sTierClass}">★ ${sRating.score.toFixed(1)}</div>`
             : '';
         const sTags = item.top_tags;
         const sTagsHtml = sTags?.length
-            ? `<div class="card-tags">${sTags.map(t => `<span class="tag-chip">${t}</span>`).join('')}</div>`
+            ? `<div class="card-tags">${sTags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</div>`
             : '';
 
         const card = document.createElement('div');
         card.className = `anime-card${sPopularityClass ? ' ' + sPopularityClass : ''}`;
         card.innerHTML = `
-            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${item.id || 0})" style="cursor:pointer">
-                <img loading="lazy" decoding="async" src="${img}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
+            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${safeNumber(item.id)})" style="cursor:pointer">
+                <img loading="lazy" decoding="async" src="${escHtml(img)}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
                 ${sRatingHtml}
                 <div class="card-overlay" style="pointer-events:none">
-                    <div class="card-overlay-title">${name}</div>
+                    <div class="card-overlay-title">${escapeHtml(name)}</div>
                     ${sTagsHtml}
                 </div>
-                <div class="${heartClass}" onclick="handleToggleFav(event, ${item.id || 0}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(url)}', ${item.rating?.score || 0}, ${item.rank || 0}, this)">
+                <div class="${heartClass}" onclick="handleToggleFav(event, ${safeNumber(item.id)}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(url)}', ${safeNumber(item.rating?.score)}, ${safeNumber(item.rank)}, this)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                 </div>
             </div>
@@ -2048,6 +2155,213 @@ async function handlePlayEpisode(animeName, episode, filePath) {
     }
 }
 
+// ─── 赛季浏览 ─────────────────────────────────────
+
+let pickerYear = null;
+
+function toggleSeasonPicker() {
+    const picker = document.getElementById('seasonPicker');
+    const label = document.getElementById('seasonLabel');
+    if (picker.style.display === 'none') {
+        pickerYear = seasonYear;
+        updatePickerUI();
+        picker.style.display = '';
+        label.style.display = 'none';
+    } else {
+        picker.style.display = 'none';
+        label.style.display = '';
+    }
+}
+
+function updatePickerUI() {
+    document.getElementById('seasonPickYear').textContent = pickerYear;
+    document.querySelectorAll('.season-pick-btn').forEach(btn => {
+        btn.classList.toggle('sel', parseInt(btn.dataset.m) === seasonMonth);
+    });
+}
+
+function seasonPickerYear(delta) {
+    pickerYear += delta;
+    updatePickerUI();
+}
+
+function jumpSeason(month) {
+    document.getElementById('seasonPicker').style.display = 'none';
+    document.getElementById('seasonLabel').style.display = '';
+    showSeason(pickerYear, month);
+}
+
+async function showSeason(year, month) {
+    const loadToken = ++seasonLoadToken;
+    seasonIsLoading = true;
+    seasonYear = year;
+    seasonMonth = month;
+    pickerYear = year;
+    activeSort = 'default';
+    buildSortBar();
+    document.getElementById('scheduleWrap').style.display = 'none';
+    document.getElementById('seasonBar').style.display = '';
+    document.getElementById('seasonLabel').textContent = `${year}年 ${SEASON_NAMES[month]} (${month}月)`;
+    document.getElementById('seasonLabel').style.display = '';
+    document.getElementById('seasonPicker').style.display = 'none';
+    document.getElementById('gridTitle').textContent = `${year}年${SEASON_NAMES[month]}季`;
+    globalSeasonItems = null;
+    renderSeasonLoading(year, month);
+    try {
+        const items = await pywebview.api.get_season_anime(year, month);
+        if (loadToken !== seasonLoadToken) return;
+        seasonIsLoading = false;
+        globalSeasonItems = items;
+        await renderSeasonGrid(loadToken);
+        if (items.length === 0) showToast('该季度暂无数据');
+    } catch (e) {
+        if (loadToken !== seasonLoadToken) return;
+        seasonIsLoading = false;
+        globalSeasonItems = null;
+        renderSeasonError(year, month);
+        showToast('季度数据加载失败', 'alert-circle');
+    }
+}
+
+function renderSeasonLoading(year, month) {
+    const grid = document.getElementById('cardGrid');
+    if (!grid) return;
+    grid.innerHTML = `
+        <div class="season-state" role="status" aria-live="polite">
+            <div class="season-spinner" aria-hidden="true"></div>
+            <div class="season-state-title">正在加载 ${year} 年${SEASON_NAMES[month]}季</div>
+            <div class="season-state-subtitle">正在从 Bangumi 获取季度条目和标签，请稍候...</div>
+        </div>`;
+    document.getElementById('countBadge').textContent = '加载中';
+}
+
+function renderSeasonError(year, month) {
+    const grid = document.getElementById('cardGrid');
+    if (!grid) return;
+    grid.innerHTML = `
+        <div class="season-state" role="alert">
+            <div class="season-state-title">季度数据加载失败</div>
+            <div class="season-state-subtitle">请检查网络或代理设置，然后重试。</div>
+            <button class="btn-primary" onclick="showSeason(${safeNumber(year)}, ${safeNumber(month)})">重新加载</button>
+        </div>`;
+    document.getElementById('countBadge').textContent = '加载失败';
+}
+
+function prevSeason() {
+    let y = seasonYear, m = seasonMonth - 3;
+    if (m < 1) { y--; m = 10; }
+    showSeason(y, m);
+}
+
+function nextSeason() {
+    let y = seasonYear, m = seasonMonth + 3;
+    if (m > 10) { y++; m = 1; }
+    showSeason(y, m);
+}
+
+function backToCurrentSeason() {
+    seasonLoadToken++;
+    seasonIsLoading = false;
+    seasonYear = null;
+    seasonMonth = null;
+    globalSeasonItems = null;
+    document.getElementById('scheduleWrap').style.display = '';
+    document.getElementById('seasonBar').style.display = 'none';
+    document.getElementById('gridTitle').textContent = activeDay === -1 ? '全部放送' : '今日放送';
+    activeSort = 'default';
+    buildSortBar();
+    renderAnimeGrid();
+}
+
+async function renderSeasonGrid(expectedLoadToken = null) {
+    const grid = document.getElementById('cardGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    let items = globalSeasonItems || [];
+    const config = await pywebview.api.get_init_config();
+    if (expectedLoadToken !== null && expectedLoadToken !== seasonLoadToken) return;
+    if (config.only_show_japanese) {
+        items = items.filter(item => isJapaneseAnime(item));
+    }
+    if (!items.length) {
+        grid.innerHTML = '<div class="empty-grid-state"><p>该季度暂无数据</p></div>';
+        document.getElementById('countBadge').textContent = '0 部';
+        return;
+    }
+    if (activeSort === 'rating') {
+        items = [...items].sort(compareByBangumiRank);
+    } else if (activeSort === 'rank') {
+        items = [...items].sort((a, b) => popularityCount(b) - popularityCount(a));
+    }
+    document.getElementById('countBadge').textContent = `${items.length} 部`;
+    buildSortBar();
+    const fragment = document.createDocumentFragment();
+    items.forEach(item => {
+        const name = item.name_cn || item.name;
+        const img = item.images?.common || '';
+        const isFav = globalFavorites.some(f => f.name === name);
+        const rating = item.rating;
+        const popularityClass = popularLevel(rating, item.rank);
+        const tierBadgeClass = popularityClass ? ' ' + popularityClass : '';
+        const ratingHtml = rating?.score
+            ? `<div class="rating-badge${tierBadgeClass}">★ ${rating.score.toFixed(1)}</div>`
+            : '';
+        const tags = item.top_tags;
+        const tagsHtml = tags?.length
+            ? `<div class="card-tags">${tags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</div>` : '';
+        const card = document.createElement('div');
+        card.className = `anime-card${popularityClass ? ' ' + popularityClass : ''}`;
+        card.innerHTML = `
+            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${safeNumber(item.id)})" style="cursor:pointer">
+                <img loading="lazy" decoding="async" src="${escHtml(img)}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
+                ${ratingHtml}
+                <div class="card-overlay" style="pointer-events:none">
+                    <div class="card-overlay-title">${escapeHtml(name)}</div>
+                    ${tagsHtml}
+                </div>
+                <div class="${isFav ? 'heart-btn liked' : 'heart-btn'}" onclick="handleToggleFav(event, ${safeNumber(item.id)}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(item.url)}', ${safeNumber(item.rating?.score)}, ${safeNumber(item.rank)}, this)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                </div>
+            </div>
+            <div class="card-body">
+                <button class="card-btn btn-detail" onclick="openLink('${escAttr(item.url)}')">🌐 详情</button>
+                <button class="card-btn btn-dl" onclick="handleSearch('${escAttr(name)}')">⬇️ 下载</button>
+            </div>`;
+        fragment.appendChild(card);
+    });
+    grid.appendChild(fragment);
+    requestAnimationFrame(() => { safeCreateIcons(); });
+}
+
+function popularLevel(rating, rank) {
+    if (!rank) return '';  // null, undefined, 0 are all "unranked"
+    if (rank <= 100) return 'elite';
+    if (rank <= 500) return 'popular';
+    return '';
+}
+
+function compareByBangumiRank(a, b) {
+    const aRank = validRank(a?.rank);
+    const bRank = validRank(b?.rank);
+    if (aRank !== bRank) return aRank - bRank;
+    return safeNumber(b?.rating?.score) - safeNumber(a?.rating?.score);
+}
+
+function validRank(rank) {
+    const number = Number(rank);
+    return Number.isFinite(number) && number > 0 ? number : Number.POSITIVE_INFINITY;
+}
+
+function popularityCount(item) {
+    const collection = item?.collection || {};
+    return safeNumber(collection.collect ?? collection.doing);
+}
+
+function safeNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+}
+
 function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
@@ -2056,9 +2370,22 @@ function escapeHtml(str) {
 
 // JS 字符串安全转义（用于 onclick 等 HTML 属性内的 JS 字面量）
 function escAttr(s) {
-    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '&quot;')
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029');
 }
-function openLink(url) { window.open(url); }
+function openLink(url) {
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') window.open(parsed.href);
+    } catch (_) {}
+}
 </script>
 </body>
 </html>

@@ -15,8 +15,6 @@ a = Analysis(
     ],
     hiddenimports=[
         'qbittorrentapi',
-        'tkinter',
-        'tkinter.filedialog',
         'bottle',
         'requests',
         'feedparser',
