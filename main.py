@@ -57,6 +57,10 @@ server = Bottle()
 def serve_index():
     return static_file('index.html', root=WEB_DIR)
 
+@server.route('/covers/<filename:path>')
+def serve_cover(filename):
+    return static_file(filename, root=CACHE_DIR)
+
 @server.route('/<filepath:path>')
 def serve_static(filepath):
     # 优先找 Web 资源，找不到再找缓存图片
@@ -146,14 +150,18 @@ class AnimeProAPI:
             img_url = imgs.get('large') or imgs.get('common')
             if not img_url: continue
             
-            filename = img_url.split('/')[-1]
+            parsed_url = urllib.parse.urlparse(img_url)
+            filename = os.path.basename(parsed_url.path or img_url)
+            if not filename:
+                continue
             local_path = os.path.join(self.cache_path, filename)
             
             # 💡 仅当文件存在且大于 20KB 时才认为有效
             if os.path.exists(local_path) and os.path.getsize(local_path) > 20480:
-                item['images']['common'] = f"/{filename}"
-                item['images']['large'] = f"/{filename}"
-            else:
+                local_url = f"/covers/{urllib.parse.quote(filename)}"
+                item['images']['common'] = local_url
+                item['images']['large'] = local_url
+            elif parsed_url.scheme in ("http", "https"):
                 threading.Thread(target=self._download_img, args=(img_url, local_path), daemon=True).start()
 
     def get_cache_size(self):
@@ -295,7 +303,7 @@ class AnimeProAPI:
             rank = rating.get("rank")
             if rank == 0:
                 rank = None
-        return {
+        detail = {
             "id": row["id"], "name": row["name"], "name_cn": row["name_cn"],
             "url": row["url"], "summary": row["summary"] or "",
             "air_date": row["air_date"],
@@ -303,6 +311,8 @@ class AnimeProAPI:
             "images": {"common": row["image_common"], "large": row["image_large"]},
             "top_tags": self._top_tags_from_cache(row["id"], limit=8),
         }
+        self._process_image_urls([detail])
+        return detail
 
     def get_subject_detail(self, subject_id):
         """返回番剧完整详情，DB 有简介时直接返回，否则从 API 拉取并存储。"""
@@ -325,7 +335,7 @@ class AnimeProAPI:
             tags = data.get("tags", [])
             if tags:
                 self.subject_tags_cache[subject_id] = tags
-            return {
+            detail = {
                 "id": data["id"], "name": data.get("name"), "name_cn": data.get("name_cn"),
                 "url": data.get("url") or f"https://bgm.tv/subject/{subject_id}",
                 "summary": data.get("summary") or "",
@@ -335,6 +345,8 @@ class AnimeProAPI:
                 "images": data.get("images") or {},
                 "top_tags": self._top_tags_from_cache(subject_id, limit=8),
             }
+            self._process_image_urls([detail])
+            return detail
         except Exception as e:
             logging.error("get_subject_detail: id=%s, error=%s", subject_id, e)
             if row:
@@ -345,6 +357,10 @@ class AnimeProAPI:
         data = self.cached_bgm_data
         if not data:
             return data
+        all_items = []
+        for day in data:
+            all_items.extend(day.get('items', []))
+        self._process_image_urls(all_items)
         for day in data:
             for item in day.get('items', []):
                 tags = self.subject_tags_cache.get(item.get('id'))

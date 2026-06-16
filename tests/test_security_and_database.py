@@ -6,6 +6,7 @@ from unittest import mock
 from pathlib import Path
 
 import database
+import downloader
 import local_manager
 import main
 
@@ -95,9 +96,12 @@ class SeasonFetchTests(unittest.TestCase):
         self.api.config = {"use_proxy": False}
         self.api.db = database.AnimeDB(":memory:")
         self.api.subject_tags_cache = {}
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.api.cache_path = self.temp_dir.name
 
     def tearDown(self):
         self.api.db.close()
+        self.temp_dir.cleanup()
 
     def test_month_fetch_uses_exact_pagination(self):
         calls = []
@@ -225,6 +229,45 @@ class SeasonFetchTests(unittest.TestCase):
         self.assertEqual(items, [visible])
         process_images.assert_called_once_with([visible])
 
+    def test_cached_cover_rewrites_remote_url_to_local_cover_route(self):
+        cover_path = os.path.join(self.api.cache_path, "cover.jpg")
+        with open(cover_path, "wb") as cover:
+            cover.write(b"x" * 20481)
+        item = {
+            "images": {
+                "common": "https://lain.bgm.tv/pic/cover/c/cover.jpg?updated=1",
+                "large": "https://lain.bgm.tv/pic/cover/l/cover.jpg?updated=1",
+            }
+        }
+
+        with mock.patch.object(main.threading.Thread, "start") as start:
+            self.api._process_image_urls([item])
+
+        self.assertEqual(item["images"]["common"], "/covers/cover.jpg")
+        self.assertEqual(item["images"]["large"], "/covers/cover.jpg")
+        start.assert_not_called()
+
+    def test_calendar_cache_uses_local_covers_when_files_exist(self):
+        cover_path = os.path.join(self.api.cache_path, "calendar.jpg")
+        with open(cover_path, "wb") as cover:
+            cover.write(b"x" * 20481)
+        self.api.cached_bgm_data = [{
+            "weekday": {"id": 1},
+            "items": [{
+                "id": 1,
+                "images": {
+                    "common": "https://lain.bgm.tv/pic/cover/c/calendar.jpg",
+                    "large": "https://lain.bgm.tv/pic/cover/l/calendar.jpg",
+                },
+            }],
+        }]
+
+        data = self.api.get_bgm_data()
+
+        images = data[0]["items"][0]["images"]
+        self.assertEqual(images["common"], "/covers/calendar.jpg")
+        self.assertEqual(images["large"], "/covers/calendar.jpg")
+
 
 class LocalPlaybackSecurityTests(unittest.TestCase):
     def setUp(self):
@@ -276,6 +319,133 @@ class LocalPlaybackSecurityTests(unittest.TestCase):
         self.db.mark_watched.assert_called_once_with("Test Anime", 1)
 
 
+class TorrentMetadataTests(unittest.TestCase):
+    def test_parse_single_episode_title(self):
+        title = "[喵萌奶茶屋] Summer Pockets - 06 [1080p][简繁][HEVC][MKV]"
+
+        meta = downloader.parse_torrent_title(title)
+        tags = downloader.build_resource_tags(meta, "Mikan", "742 MB")
+
+        self.assertEqual(meta["group"], "喵萌奶茶屋")
+        self.assertEqual(meta["episode"], "06")
+        self.assertFalse(meta["is_batch"])
+        self.assertEqual(meta["resolution"], "1080p")
+        self.assertEqual(meta["subtitle"], "简繁")
+        self.assertEqual(meta["codec"], "HEVC")
+        self.assertEqual(meta["container"], "MKV")
+        self.assertEqual(tags, ["喵萌奶茶屋", "EP 06", "1080p", "简繁", "HEVC", "MKV", "742 MB"])
+
+    def test_parse_batch_title(self):
+        title = "Some Anime Complete Batch 01-12 1080p CHS x264 MP4"
+
+        meta = downloader.parse_torrent_title(title)
+        tags = downloader.build_resource_tags(meta, "Nyaa.si", "")
+
+        self.assertTrue(meta["is_batch"])
+        self.assertEqual(meta["episode_range"], "01-12")
+        self.assertIn("合集", tags)
+        self.assertIn("01-12", tags)
+        self.assertNotIn("EP 01", tags)
+
+    def test_ignores_untrusted_tiny_rss_size(self):
+        entry = {
+            "title": "[Group] Anime - 06 [1080p][HEVC][1.3GB]",
+            "enclosures": [{"length": "1"}],
+        }
+
+        self.assertEqual(downloader._extract_entry_size(entry), "1.3 GB")
+
+    def test_deduplicates_same_release_signature_and_prefers_size(self):
+        meta = downloader.parse_torrent_title("[Group] Anime - 06 [1080p][CHS][HEVC][MKV]")
+        duplicate_without_size = {
+            "title": "[Group] Anime - 06 [1080p][CHS][HEVC][MKV]",
+            "url": "https://example.test/a.torrent",
+            "source": "Mikan",
+            "size": "",
+            "meta": meta,
+        }
+        duplicate_with_size = {
+            "title": "[Group] Anime - 06 [1080p][CHS][HEVC][MKV]",
+            "url": "https://example.test/b.torrent",
+            "source": "Mikan",
+            "size": "1.3 GB",
+            "meta": meta,
+        }
+
+        results = downloader._dedupe_torrent_results([
+            duplicate_without_size,
+            duplicate_with_size,
+        ])
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["size"], "1.3 GB")
+
+    def test_extracts_torrent_url_with_query_and_rejects_detail_page(self):
+        valid = {
+            "enclosures": [{"href": "https://example.test/file.torrent?download=1"}],
+            "links": [{"href": "https://example.test/view/123"}],
+        }
+        invalid = {
+            "link": "https://example.test/view/123",
+            "links": [{"href": "https://example.test/view/123"}],
+        }
+
+        self.assertEqual(
+            downloader._extract_torrent_url(valid),
+            "https://example.test/file.torrent?download=1",
+        )
+        self.assertIsNone(downloader._extract_torrent_url(invalid))
+
+    def test_search_results_skip_entries_without_download_url(self):
+        class Response:
+            content = b"rss"
+
+            def raise_for_status(self):
+                return None
+
+        feed = mock.Mock()
+        feed.entries = [
+            {
+                "title": "Detail Page Only",
+                "link": "https://example.test/view/1",
+                "links": [{"href": "https://example.test/view/1"}],
+            },
+            {
+                "title": "[Group] Anime - 06 [1080p]",
+                "links": [{"href": "https://example.test/download/6.torrent"}],
+            },
+        ]
+
+        source = downloader.RSSSource("Test", "https://example.test/rss?q={keyword}")
+        with mock.patch.object(downloader.requests, "get", return_value=Response()):
+            with mock.patch.object(downloader.feedparser, "parse", return_value=feed):
+                results = downloader._search_single_source("Anime", source)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["title"], "[Group] Anime - 06 [1080p]")
+
+    def test_deduplicates_same_release_across_sources(self):
+        meta = downloader.parse_torrent_title("[Group] Anime - 06 [1080p][CHS][HEVC][MKV]")
+        results = downloader._dedupe_torrent_results([
+            {
+                "title": "[Group] Anime - 06 [1080p][CHS][HEVC][MKV]",
+                "url": "https://source-a.test/a.torrent",
+                "source": "Source A",
+                "size": "",
+                "meta": meta,
+            },
+            {
+                "title": "[Group] Anime - 06 [1080p][CHS][HEVC][MKV]",
+                "url": "https://source-b.test/b.torrent",
+                "source": "Source B",
+                "size": "",
+                "meta": meta,
+            },
+        ])
+
+        self.assertEqual(len(results), 1)
+
+
 class FrontendEscapingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -288,6 +458,8 @@ class FrontendEscapingTests(unittest.TestCase):
             'title="${escHtml(t.title)}">${escapeHtml(t.title)}',
             self.html,
         )
+        self.assertIn("function renderTorrentTags(t)", self.html)
+        self.assertIn("escapeHtml(tagText)", self.html)
 
     def test_inline_handler_escaping_blocks_html_entity_bypass(self):
         esc_attr_start = self.html.index("function escAttr(s)")

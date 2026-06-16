@@ -58,27 +58,242 @@ class RSSSource:
 
 # ─── 通用 RSS 解析 ───────────────────────────────────────
 
+def _is_download_url(url: str, link_meta: dict = None) -> bool:
+    if not url:
+        return False
+    if url.startswith("magnet:"):
+        return True
+    parsed = urllib.parse.urlparse(url)
+    if parsed.path.lower().endswith(".torrent"):
+        return True
+    mime_type = (link_meta or {}).get("type", "").lower()
+    return "bittorrent" in mime_type
+
+
+def _download_url_score(url: str) -> int:
+    if not url:
+        return 0
+    if url.startswith("magnet:"):
+        return 3
+    if urllib.parse.urlparse(url).path.lower().endswith(".torrent"):
+        return 2
+    return 1
+
+
 def _extract_torrent_url(entry) -> Optional[str]:
-    """从 feed 条目中智能提取种子/磁力链接。"""
-    # 1. enclosures（标准 RSS 2.0）
+    """从 feed 条目中提取可直接交给下载器的种子/磁力链接。"""
+    candidates = []
     for enc in entry.get("enclosures", []):
-        href = enc.get("href", "")
-        if href.endswith(".torrent") or href.startswith("magnet:"):
-            return href
+        candidates.append(enc)
+    for link in entry.get("links", []):
+        candidates.append(link)
 
-    # 2. links 列表
-    for ln in entry.get("links", []):
-        href = ln.get("href", "")
-        if href.endswith(".torrent"):
-            return href
+    best_url = None
+    best_score = 0
+    for item in candidates:
+        href = (item.get("href", "") or "").strip()
+        if not _is_download_url(href, item):
+            continue
+        score = _download_url_score(href)
+        if score > best_score:
+            best_url = href
+            best_score = score
 
-    # 3. magnet links
-    for ln in entry.get("links", []):
-        href = ln.get("href", "")
-        if href.startswith("magnet:"):
-            return href
+    return best_url
 
-    return None
+
+def _clean_token(value: str) -> str:
+    return re.sub(r"\s+", " ", value or "").strip(" []【】()（）")
+
+
+def _format_size(value) -> str:
+    try:
+        size = int(value)
+    except (TypeError, ValueError):
+        return ""
+    if size < 1024 * 1024:
+        return ""
+    units = ["B", "KB", "MB", "GB"]
+    num = float(size)
+    for unit in units:
+        if num < 1024 or unit == units[-1]:
+            return f"{num:.1f} {unit}" if unit != "B" else f"{int(num)} B"
+        num /= 1024
+    return ""
+
+
+def _extract_entry_size(entry) -> str:
+    for enc in entry.get("enclosures", []):
+        size = _format_size(enc.get("length"))
+        if size:
+            return size
+    for key in ("length", "size", "nyaa_size"):
+        size = _format_size(entry.get(key))
+        if size:
+            return size
+    title = entry.get("title", "")
+    match = re.search(r"(?i)(\d+(?:\.\d+)?)\s*(GB|GiB|MB|MiB)", title)
+    if match:
+        return f"{match.group(1)} {match.group(2).upper().replace('IB', 'B')}"
+    return ""
+
+
+def parse_torrent_title(title: str) -> dict:
+    """Extract readable resource metadata from common anime torrent titles."""
+    text = title or ""
+    meta = {
+        "group": "",
+        "episode": "",
+        "episode_range": "",
+        "is_batch": False,
+        "resolution": "",
+        "subtitle": "",
+        "codec": "",
+        "container": "",
+    }
+
+    group = re.match(r"^\s*[\[【]([^\]】]{1,48})[\]】]", text)
+    if group:
+        meta["group"] = _clean_token(group.group(1))
+
+    range_match = re.search(
+        r"(?<!\d)(\d{1,3})\s*(?:-|~|～|至|到)\s*(\d{1,3})(?!\d)", text
+    )
+    if range_match:
+        start, end = range_match.groups()
+        meta["episode_range"] = f"{int(start):02d}-{int(end):02d}"
+        meta["is_batch"] = True
+
+    batch_match = re.search(
+        r"(?i)(合集|全集|全\s*\d{1,3}\s*[话話集]?|batch|complete|complete\s+series)",
+        text,
+    )
+    if batch_match:
+        meta["is_batch"] = True
+
+    if not meta["episode_range"]:
+        episode_patterns = [
+            r"(?i)(?:第|ep(?:isode)?\.?\s*)\s*(\d{1,3})(?:\s*[话話集])?",
+            r"(?:^|[\s_\-\[\(【])(\d{1,3})(?:v\d+)?(?:$|[\s_\-\]\)】.])",
+        ]
+        for pattern in episode_patterns:
+            candidates = []
+            for match in re.finditer(pattern, text):
+                value = int(match.group(1))
+                if 0 < value < 200 and value not in (264, 265):
+                    candidates.append(value)
+            if candidates:
+                meta["episode"] = f"{candidates[-1]:02d}"
+                break
+
+    resolution = re.search(r"(?i)(2160p|1080p|720p|480p|4k)", text)
+    if resolution:
+        value = resolution.group(1).lower()
+        meta["resolution"] = "2160p" if value == "4k" else value
+
+    if re.search(r"(?i)(简繁|繁简|CHS\s*[&+/]\s*CHT|CHT\s*[&+/]\s*CHS)", text):
+        meta["subtitle"] = "简繁"
+    elif re.search(r"(?i)(简中|简体|CHS|GB)", text):
+        meta["subtitle"] = "简中"
+    elif re.search(r"(?i)(繁中|繁体|CHT|BIG5)", text):
+        meta["subtitle"] = "繁中"
+
+    codec = re.search(r"(?i)(hevc|h\.?265|x265|avc|h\.?264|x264|av1)", text)
+    if codec:
+        raw = codec.group(1).lower().replace(".", "")
+        if raw in ("hevc", "h265", "x265"):
+            meta["codec"] = "HEVC"
+        elif raw in ("avc", "h264", "x264"):
+            meta["codec"] = "AVC"
+        else:
+            meta["codec"] = "AV1"
+
+    container = re.search(r"(?i)\b(mkv|mp4)\b", text)
+    if container:
+        meta["container"] = container.group(1).upper()
+
+    return meta
+
+
+def build_resource_tags(meta: dict, source: str = "", size: str = "") -> list[str]:
+    tags = []
+    if meta.get("group"):
+        tags.append(meta["group"])
+    elif source:
+        tags.append(source)
+
+    if meta.get("is_batch"):
+        tags.append("合集")
+        if meta.get("episode_range"):
+            tags.append(meta["episode_range"])
+    elif meta.get("episode"):
+        tags.append(f"EP {meta['episode']}")
+    else:
+        tags.append("集数未知")
+
+    for key in ("resolution", "subtitle", "codec", "container"):
+        if meta.get(key):
+            tags.append(meta[key])
+    if size:
+        tags.append(size)
+    return tags
+
+
+def _normalize_title_for_dedup(title: str) -> str:
+    text = (title or "").lower()
+    text = re.sub(r"(?i)\b\d+(?:\.\d+)?\s*(?:gb|gib|mb|mib)\b", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _dedup_signature(result: dict) -> tuple:
+    meta = result.get("meta") or {}
+    group = meta.get("group") or ""
+    episode = meta.get("episode_range") or meta.get("episode") or ""
+    if group and episode:
+        return (
+            group,
+            episode,
+            bool(meta.get("is_batch")),
+            meta.get("resolution") or "",
+            meta.get("subtitle") or "",
+            meta.get("codec") or "",
+            meta.get("container") or "",
+        )
+    return (
+        _normalize_title_for_dedup(result.get("title") or ""),
+    )
+
+
+def _dedupe_torrent_results(results: list[dict]) -> list[dict]:
+    deduped = []
+    positions = {}
+    seen_urls = set()
+
+    for result in results:
+        url = result.get("url") or ""
+        normalized_url = url.split("#", 1)[0]
+        if normalized_url and normalized_url in seen_urls:
+            continue
+        if normalized_url:
+            seen_urls.add(normalized_url)
+
+        signature = _dedup_signature(result)
+        if signature in positions:
+            existing_index = positions[signature]
+            existing = deduped[existing_index]
+            existing_score = _download_url_score(existing.get("url") or "")
+            result_score = _download_url_score(result.get("url") or "")
+            if result_score > existing_score:
+                deduped[existing_index] = result
+            elif result_score == existing_score and not existing.get("size") and result.get("size"):
+                deduped[existing_index] = result
+            continue
+
+        positions[signature] = len(deduped)
+        deduped.append(result)
+
+    return deduped
 
 
 def _search_single_source(keyword: str, source: RSSSource, proxies: dict = None) -> list[dict]:
@@ -103,11 +318,18 @@ def _search_single_source(keyword: str, source: RSSSource, proxies: dict = None)
         if not title:
             continue
 
-        url = _extract_torrent_url(entry) or entry.get("link", "")
+        url = _extract_torrent_url(entry)
+        if not url:
+            continue
+        meta = parse_torrent_title(title)
+        size = _extract_entry_size(entry)
         results.append({
             "title": title,
             "url": url,
             "source": source.name,
+            "size": size,
+            "meta": meta,
+            "resource_tags": build_resource_tags(meta, source.name, size),
         })
 
     return results
@@ -140,6 +362,8 @@ def search_torrents(anime_name: str, sources: Optional[list[dict]] = None, proxi
                 all_results.extend(future.result())
             except Exception as e:
                 logging.error("search_torrents: source=%s, error=%s", src.name, e)
+
+    all_results = _dedupe_torrent_results(all_results)
 
     if not all_results:
         return "error", []

@@ -788,6 +788,30 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .torrent-meta { font-size: 10px; color: var(--txt3); margin-top: 2px; }
+  .torrent-tags {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin-top: 6px;
+  }
+  .torrent-tag {
+    max-width: 96px; height: 18px; padding: 0 6px;
+    display: inline-flex; align-items: center;
+    border: 1px solid rgba(124,109,250,0.28);
+    border-radius: 999px;
+    background: rgba(124,109,250,0.10);
+    color: var(--txt2);
+    font-size: 10px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .torrent-tag.batch {
+    color: #ffcf6b;
+    border-color: rgba(255,207,107,0.38);
+    background: rgba(255,207,107,0.12);
+  }
+  .torrent-tag.unknown {
+    color: var(--txt3);
+    border-color: var(--border);
+    background: var(--bg2);
+  }
   .btn-push {
     height: 28px; padding: 0 12px;
     background: linear-gradient(135deg, var(--accent), #9b7ffc);
@@ -1732,11 +1756,26 @@ function renderTorrentList(animeName, results) {
         const row = document.createElement('div');
         row.className = 'torrent-row';
         row.innerHTML = `
-            <div class="torrent-info"><div class="torrent-name" title="${escHtml(t.title)}">${escapeHtml(t.title)}</div></div>
+            <div class="torrent-info">
+                <div class="torrent-name" title="${escHtml(t.title)}">${escapeHtml(t.title)}</div>
+                ${renderTorrentTags(t)}
+            </div>
             <button class="btn-push" onclick="executePush('${escAttr(t.url)}', '${escAttr(animeName)}', this)">推送</button>
         `;
         list.appendChild(row);
     });
+}
+
+function renderTorrentTags(t) {
+    const tags = Array.isArray(t.resource_tags) ? t.resource_tags : [];
+    if (!tags.length) return '<div class="torrent-tags"><span class="torrent-tag unknown">集数未知</span></div>';
+    return `<div class="torrent-tags">${tags.map(tag => {
+        const tagText = String(tag || '');
+        const cls = tagText === '合集'
+            ? 'torrent-tag batch'
+            : tagText === '集数未知' ? 'torrent-tag unknown' : 'torrent-tag';
+        return `<span class="${cls}" title="${escHtml(tagText)}">${escapeHtml(tagText)}</span>`;
+    }).join('')}</div>`;
 }
 
 async function executePush(url, name, btn) {
