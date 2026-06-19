@@ -35,12 +35,15 @@ pyinstaller build.spec
 
 ## 架构
 
-| 文件 | 职责 |
+| 路径 | 职责 |
 |------|------|
-| `main.py` | 入口，Bottle HTTP 服务，pywebview 窗口，JS API bridge |
-| `database.py` | SQLite 数据层（日历/标签/收藏/观看记录） |
-| `downloader.py` | 多站点 RSS 并行搜索 + qBittorrent 推送 |
-| `local_manager.py` | 本地视频扫描、集数解析、系统播放 |
+| `main.py` | 桌面入口，Bottle HTTP 服务，pywebview 窗口，JS API bridge |
+| `animeasi/database.py` | SQLite 数据层（日历/标签/收藏/观看记录，旧 JSON 迁移） |
+| `animeasi/local_manager.py` | 本地视频扫描、集数解析、系统播放 |
+| `animeasi/cache/cover_cache.py` | 封面缓存、缓存命中 URL 改写、后台下载 |
+| `animeasi/downloads/` | RSS 种子搜索、资源标签解析、去重、qBittorrent 推送 |
+| `animeasi/season/browser.py` | 季度浏览、Bangumi 分页拉取、季度缓存、日漫主线过滤 |
+| `animeasi/subjects/schema.py` | 统一前后端 subject/card 数据契约 |
 | `WEB/index.html` | 前端单页应用（内联 CSS + JS） |
 
 数据文件（运行时自动生成）：

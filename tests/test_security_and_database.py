@@ -5,10 +5,12 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
-import database
-import downloader
-import local_manager
+from animeasi import database, local_manager
+from animeasi.cache import cover_cache
+from animeasi.downloads import downloader
 import main
+from animeasi.season import browser as season_browser
+from animeasi.subjects import schema as subject_schema
 
 
 class DatabaseConcurrencyTests(unittest.TestCase):
@@ -118,7 +120,7 @@ class SeasonFetchTests(unittest.TestCase):
                 "data": [{"id": 101, "date": "2015-01-31"}],
             })
 
-        with mock.patch.object(main.requests, "get", side_effect=fake_get):
+        with mock.patch.object(season_browser.requests, "get", side_effect=fake_get):
             items = self.api._fetch_season_month(2015, 1)
 
         self.assertEqual(len(items), 101)
@@ -131,13 +133,13 @@ class SeasonFetchTests(unittest.TestCase):
             "data": [{"id": 1, "date": "2015-01-01"}],
         })
         responses = [
-            main.requests.ConnectTimeout("timed out"),
-            main.requests.ConnectTimeout("timed out"),
+            season_browser.requests.ConnectTimeout("timed out"),
+            season_browser.requests.ConnectTimeout("timed out"),
             success,
         ]
 
-        with mock.patch.object(main.requests, "get", side_effect=responses) as request:
-            with mock.patch.object(main.time, "sleep") as sleep:
+        with mock.patch.object(season_browser.requests, "get", side_effect=responses) as request:
+            with mock.patch.object(season_browser.time, "sleep") as sleep:
                 items = self.api._fetch_season_month(2015, 1)
 
         self.assertEqual([item["id"] for item in items], [1])
@@ -146,11 +148,11 @@ class SeasonFetchTests(unittest.TestCase):
 
     def test_month_fetch_raises_after_retry_limit(self):
         with mock.patch.object(
-            main.requests, "get",
-            side_effect=main.requests.ConnectTimeout("timed out")
+            season_browser.requests, "get",
+            side_effect=season_browser.requests.ConnectTimeout("timed out")
         ) as request:
-            with mock.patch.object(main.time, "sleep"):
-                with self.assertRaises(main.requests.ConnectTimeout):
+            with mock.patch.object(season_browser.time, "sleep"):
+                with self.assertRaises(season_browser.requests.ConnectTimeout):
                     self.api._fetch_season_month(2015, 1)
 
         self.assertEqual(request.call_count, 3)
@@ -240,7 +242,7 @@ class SeasonFetchTests(unittest.TestCase):
             }
         }
 
-        with mock.patch.object(main.threading.Thread, "start") as start:
+        with mock.patch.object(cover_cache.threading.Thread, "start") as start:
             self.api._process_image_urls([item])
 
         self.assertEqual(item["images"]["common"], "/covers/cover.jpg")
@@ -267,6 +269,40 @@ class SeasonFetchTests(unittest.TestCase):
         images = data[0]["items"][0]["images"]
         self.assertEqual(images["common"], "/covers/calendar.jpg")
         self.assertEqual(images["large"], "/covers/calendar.jpg")
+
+    def test_favorites_use_local_covers_when_files_exist(self):
+        cover_path = os.path.join(self.api.cache_path, "favorite.jpg")
+        with open(cover_path, "wb") as cover:
+            cover.write(b"x" * 20481)
+        self.api.db.toggle_favorite({
+            "id": 1,
+            "name": "Favorite Anime",
+            "img": "https://lain.bgm.tv/pic/cover/c/favorite.jpg",
+            "url": "https://bgm.tv/subject/1",
+        })
+
+        favorites = self.api.get_favorites()
+
+        self.assertEqual(favorites[0]["img"], "/covers/favorite.jpg")
+        self.assertEqual(favorites[0]["images"]["common"], "/covers/favorite.jpg")
+        self.assertEqual(favorites[0]["display_name"], "Favorite Anime")
+
+    def test_subject_schema_normalizes_common_contract_fields(self):
+        subject = subject_schema.normalize_subject({
+            "id": 1,
+            "name": "Original",
+            "name_cn": "中文名",
+            "date": "2026-01-01",
+            "rating": {"score": 8.1, "rank": 0},
+            "images": {"common": "cover.jpg"},
+        })
+
+        self.assertEqual(subject["display_name"], "中文名")
+        self.assertEqual(subject["air_date"], "2026-01-01")
+        self.assertIsNone(subject["rank"])
+        self.assertEqual(subject["images"], {"common": "cover.jpg", "large": "cover.jpg"})
+        self.assertIn("collection", subject)
+        self.assertIn("is_season_mainline", subject)
 
 
 class LocalPlaybackSecurityTests(unittest.TestCase):
@@ -346,6 +382,18 @@ class TorrentMetadataTests(unittest.TestCase):
         self.assertIn("合集", tags)
         self.assertIn("01-12", tags)
         self.assertNotIn("EP 01", tags)
+
+    def test_season_dash_episode_is_not_treated_as_batch(self):
+        title = "[Group] Dorohedoro Season 2-06 [1080p][CHS][HEVC][MKV]"
+
+        meta = downloader.parse_torrent_title(title)
+        tags = downloader.build_resource_tags(meta, "Mikan", "1.2 GB")
+
+        self.assertFalse(meta["is_batch"])
+        self.assertEqual(meta["episode"], "06")
+        self.assertEqual(meta["episode_range"], "")
+        self.assertIn("EP 06", tags)
+        self.assertNotIn("合集", tags)
 
     def test_ignores_untrusted_tiny_rss_size(self):
         entry = {
@@ -445,6 +493,29 @@ class TorrentMetadataTests(unittest.TestCase):
 
         self.assertEqual(len(results), 1)
 
+    def test_dedup_prefers_sized_torrent_over_unsized_magnet(self):
+        meta = downloader.parse_torrent_title("[Group] Anime - 06 [1080p][CHS][HEVC][MKV]")
+        results = downloader._dedupe_torrent_results([
+            {
+                "title": "[Group] Anime - 06 [1080p][CHS][HEVC][MKV]",
+                "url": "https://example.test/6.torrent",
+                "source": "Source A",
+                "size": "1.3 GB",
+                "meta": meta,
+            },
+            {
+                "title": "[Group] Anime - 06 [1080p][CHS][HEVC][MKV]",
+                "url": "magnet:?xt=urn:btih:abcdef",
+                "source": "Source B",
+                "size": "",
+                "meta": meta,
+            },
+        ])
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["size"], "1.3 GB")
+        self.assertEqual(results[0]["url"], "https://example.test/6.torrent")
+
 
 class FrontendEscapingTests(unittest.TestCase):
     @classmethod
@@ -499,6 +570,13 @@ class FrontendEscapingTests(unittest.TestCase):
         self.assertIn("if (loadToken !== seasonLoadToken) return", self.html)
         self.assertIn("await renderSeasonGrid(loadToken)", self.html)
         self.assertIn("if (seasonIsLoading) return", self.html)
+
+    def test_anime_cards_use_shared_renderer_with_favorite_play_overlay(self):
+        self.assertIn("function createAnimeCard(item, options = {})", self.html)
+        self.assertEqual(self.html.count("card.innerHTML = `"), 1)
+        self.assertIn("playName: favName", self.html)
+        self.assertIn("openEpisodeModal('${escAttr(options.playName)}')", self.html)
+        self.assertIn("fragment.appendChild(createAnimeCard(item));", self.html)
 
 
 class PackagingTests(unittest.TestCase):

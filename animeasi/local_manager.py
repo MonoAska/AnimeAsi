@@ -7,7 +7,6 @@ import re
 import logging
 import subprocess
 
-WATCH_HISTORY_FILE = "watch_history.json"  # 迁移用
 
 # 支持的主流视频格式
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm"}

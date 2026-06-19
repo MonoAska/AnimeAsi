@@ -4,7 +4,6 @@ SQLite 数据库模块 — 统一管理日历 / 标签 / 收藏 / 观看记录
 
 import sqlite3
 import json
-import os
 import logging
 import threading
 from functools import wraps
@@ -373,82 +372,6 @@ class AnimeDB:
         )
         self.conn.commit()
 
-    # ─── Migration ──────────────────────────────────────
-
-    @synchronized
-    def needs_migration(self):
-        return self.conn.execute("SELECT COUNT(*) FROM calendar").fetchone()[0] == 0
-
-    @synchronized
-    def migrate_from_json(self, bgm_path, tags_path, fav_path, hist_path):
-        imported = 0
-        # Calendar
-        if os.path.exists(bgm_path):
-            try:
-                with open(bgm_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                self.save_calendar(data)
-                imported += 1
-                logging.info("Migrated: bgm_cache.json (%d days)", len(data))
-            except Exception as e:
-                logging.error("Migration failed bgm_cache.json: %s", e)
-
-        # Tags
-        if os.path.exists(tags_path):
-            try:
-                with open(tags_path, "r", encoding="utf-8") as f:
-                    cache = json.load(f)
-                count = 0
-                for sid, tags in cache.items():
-                    if isinstance(tags, list):
-                        self.save_tags(int(sid), tags)
-                        count += 1
-                    elif isinstance(tags, dict) and "tags" in tags:
-                        self.save_tags(int(sid), tags["tags"])
-                        count += 1
-                if count > 0:
-                    imported += 1
-                logging.info("Migrated: subject_tags_cache.json (%d entries)", count)
-            except Exception as e:
-                logging.error("Migration failed subject_tags_cache.json: %s", e)
-
-        # Favorites
-        if os.path.exists(fav_path):
-            try:
-                with open(fav_path, "r", encoding="utf-8") as f:
-                    favs = json.load(f)
-                for fav in favs:
-                    self.conn.execute(
-                        "INSERT OR IGNORE INTO favorites (subject_id, name, img, url) VALUES (?, ?, ?, ?)",
-                        (0, fav.get("name", ""), fav.get("img", ""), fav.get("url", ""))
-                    )
-                self.conn.commit()
-                imported += 1
-                logging.info("Migrated: favorites.json (%d entries)", len(favs))
-            except Exception as e:
-                logging.error("Migration failed favorites.json: %s", e)
-
-        # Watch history
-        if os.path.exists(hist_path):
-            try:
-                with open(hist_path, "r", encoding="utf-8") as f:
-                    history = json.load(f)
-                count = 0
-                for anime_name, episodes in history.items():
-                    for ep_str, info in episodes.items():
-                        if info.get("watched"):
-                            self.conn.execute(
-                                "INSERT OR IGNORE INTO watch_history (anime_name, episode) VALUES (?, ?)",
-                                (anime_name, int(ep_str))
-                            )
-                            count += 1
-                self.conn.commit()
-                imported += 1
-                logging.info("Migrated: watch_history.json (%d entries)", count)
-            except Exception as e:
-                logging.error("Migration failed watch_history.json: %s", e)
-
-        return imported
 
     # ─── Season Cache ──────────────────────────────────
 

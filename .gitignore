@@ -18,12 +18,8 @@ venv/
 AGENTS.md
 # Runtime data
 cache_covers/
-bgm_cache.json
 config.json
-favorites.json
 error.log
-watch_history.json
-subject_tags_cache.json
 animeasi.db
 *.db-shm
 *.db-wal

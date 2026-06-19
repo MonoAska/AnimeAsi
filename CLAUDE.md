@@ -21,15 +21,18 @@ cd E:/CC/test && source venv/Scripts/activate && pyinstaller build.spec
 
 ### Backend (Python)
 
-| 文件 | 职责 |
+| 路径 | 职责 |
 |------|------|
 | `main.py` | 入口，Bottle HTTP server，pywebview 窗口，AnimeProAPI（JS API bridge） |
-| `database.py` | SQLite 数据库：日历/标签/收藏/观看记录，迁移旧 JSON |
-| `downloader.py` | 多站点 RSS 种子搜索 + qBittorrent 推送 |
-| `local_manager.py` | 本地动画文件扫描、集数解析、系统播放 |
+| `animeasi/database.py` | SQLite 数据库：日历/标签/收藏/观看记录，迁移旧 JSON |
+| `animeasi/local_manager.py` | 本地动画文件扫描、集数解析、系统播放 |
+| `animeasi/cache/cover_cache.py` | 封面缓存、缓存命中 URL 改写、后台下载 |
+| `animeasi/downloads/` | 多站点 RSS 种子搜索、资源标签解析、去重、qBittorrent 推送 |
+| `animeasi/season/browser.py` | 季度浏览、Bangumi 分页拉取、季度缓存、日漫主线过滤 |
+| `animeasi/subjects/schema.py` | 统一前后端 subject/card 数据契约 |
 
 路径约定：
-- `EXE_DIR` = exe 所在目录（存放 config.json / favorites.json 等数据文件）
+- `EXE_DIR` = exe 所在目录（存放 config.json、animeasi.db、cache_covers/ 等用户数据）
 - `RUNTIME_DIR` = 开发时同 EXE_DIR，打包后为 PyInstaller 临时解压目录（存放 web 前端资源）
 - `main.py` 启动时 `os.chdir(EXE_DIR)`，后续所有数据文件都写在 exe 旁边
 
@@ -44,7 +47,6 @@ cd E:/CC/test && source venv/Scripts/activate && pyinstaller build.spec
 
 - `animeasi.db` — SQLite 数据库（日历/标签/收藏/观看记录）
 - `config.json` — 用户配置（唯一保留的 JSON）
-- `favorites.json` / `bgm_cache.json` / `watch_history.json` — 旧 JSON 文件，仅首次启动迁移用，之后不再读写
 - `cache_covers/` — 封面图片缓存
 - `error.log` — 错误日志
 
@@ -54,6 +56,8 @@ cd E:/CC/test && source venv/Scripts/activate && pyinstaller build.spec
 - **Bottle routes**: `@server.route()` 定义 API 端点，同时通过 `@server.route('/<filepath:path>')` 提供静态文件服务
 - **内联 onclick**: 前端事件用 `onclick` 属性（非事件监听），函数必须是 **全局作用域**
 - **escAttr**: 在 onclick 中嵌入用户数据（番剧名/URL 等）时，必须用 `escAttr()` 转义。该函数会转义 `\` `'` `"` 三个字符，防止 XSS。注意：`encodeURIComponent` 不编码单引号，不可用于此场景。
+- **统一卡片渲染**: 前端卡片统一走 `createAnimeCard(item, options)`。日历、季度、搜索、收藏不要再各写一份 `card.innerHTML`；收藏播放按钮通过 `playName` 选项保留。
+- **统一 subject schema**: 后端返回给前端的番剧对象应先经过 `animeasi/subjects/schema.py` 归一化，优先提供 `display_name`、`images`、`air_date`、`rank` 等稳定字段。收藏接口可保留 `img` 兼容字段，但新逻辑应优先读 `images`。
 
 ### 日漫筛选机制
 
@@ -103,5 +107,5 @@ Bangumi 以日漫为主，**只有非日漫才会被打上产地标签**（如"�
 - `pycparser` 不能出现在 `excludes` 中（cffi 运行时需要）
 - 数据目录 `WEB/` 映射为 `web/`（注意大小写）
 - 依赖: pywebview, bottle, requests, feedparser, qbittorrent-api, pycparser
-- `database.py` 是自定义模块，需随 exe 一起打包（非 pip 依赖）
+- `animeasi/` 是自定义业务包，新增模块后需同步检查 `build.spec` 的 hiddenimports
 - 目标机器需安装 WebView2 Runtime（Windows 10 可能需要手动安装，Win11 自带）

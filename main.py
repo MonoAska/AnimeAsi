@@ -5,15 +5,16 @@ import os
 import json
 import logging
 import re
-import time
 import urllib.parse
 import requests
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from bottle import Bottle, static_file
-import downloader
-import local_manager
-import database
+from animeasi import database, local_manager
+from animeasi.cache import cover_cache
+from animeasi.downloads import downloader
+from animeasi.season import browser as season_browser
+from animeasi.subjects import schema as subject_schema
 
 # ================= 1. 路径与环境核心逻辑 =================
 
@@ -26,15 +27,11 @@ else:
 
 # 全局常量定义
 CONFIG_FILE = os.path.join(EXE_DIR, "config.json")
-FAV_FILE = os.path.join(EXE_DIR, "favorites.json")
 CACHE_DIR = os.path.join(EXE_DIR, "cache_covers")
-DATA_CACHE_FILE = os.path.join(EXE_DIR, "bgm_cache.json") # 日历数据缓存
-SUBJECT_TAGS_CACHE_FILE = os.path.join(EXE_DIR, "subject_tags_cache.json") # 条目标签缓存（迁移用）
 DB_PATH = os.path.join(EXE_DIR, "animeasi.db")
 WEB_DIR = os.path.join(RUNTIME_DIR, "web")
 
 os.chdir(EXE_DIR)
-os.makedirs(CACHE_DIR, exist_ok=True)
 
 LOG_FILE = os.path.join(EXE_DIR, "error.log")
 logging.basicConfig(
@@ -75,14 +72,9 @@ class AnimeProAPI:
         self.cache_path = CACHE_DIR
 
         self.config = self.load_config()
+        self.cover_cache = self._new_cover_cache()
 
-        # 初始化数据库 & 迁移旧 JSON
         self.db = database.AnimeDB(DB_PATH)
-        if self.db.needs_migration():
-            self.db.migrate_from_json(
-                DATA_CACHE_FILE, SUBJECT_TAGS_CACHE_FILE,
-                FAV_FILE, local_manager.WATCH_HISTORY_FILE
-            )
 
         # 内存缓存 — 启动时从 DB 加载
         self.cached_bgm_data = self.db.get_calendar() or []
@@ -130,54 +122,22 @@ class AnimeProAPI:
 
     def get_init_config(self): return self.config
 
-    def _download_img(self, url, local_path):
-        try:
-            proxies = None
-            if self.config.get("use_proxy") and self.config.get("proxy_address"):
-                p = f"http://{self.config['proxy_address']}"
-                proxies = {"http": p, "https": p}
-            resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/6.6 (github.com/animeasi)'}, proxies=proxies, timeout=10)
-            if resp.status_code == 200:
-                with open(local_path, 'wb') as f:
-                    f.write(resp.content)
-        except Exception as e:
-            logging.error("_download_img failed: url=%s, error=%s", url, e)
+    def _new_cover_cache(self):
+        return cover_cache.CoverCache(self.cache_path, self._get_proxies)
+
+    def _get_cover_cache(self):
+        if not hasattr(self, "cover_cache") or self.cover_cache.cache_dir != self.cache_path:
+            self.cover_cache = self._new_cover_cache()
+        return self.cover_cache
 
     def _process_image_urls(self, items):
-        for item in items:
-            imgs = item.get('images')
-            if not imgs: continue
-            img_url = imgs.get('large') or imgs.get('common')
-            if not img_url: continue
-            
-            parsed_url = urllib.parse.urlparse(img_url)
-            filename = os.path.basename(parsed_url.path or img_url)
-            if not filename:
-                continue
-            local_path = os.path.join(self.cache_path, filename)
-            
-            # 💡 仅当文件存在且大于 20KB 时才认为有效
-            if os.path.exists(local_path) and os.path.getsize(local_path) > 20480:
-                local_url = f"/covers/{urllib.parse.quote(filename)}"
-                item['images']['common'] = local_url
-                item['images']['large'] = local_url
-            elif parsed_url.scheme in ("http", "https"):
-                threading.Thread(target=self._download_img, args=(img_url, local_path), daemon=True).start()
+        self._get_cover_cache().process_items(items)
 
     def get_cache_size(self):
-        try:
-            total = sum(os.path.getsize(os.path.join(self.cache_path, f)) for f in os.listdir(self.cache_path) if os.path.isfile(os.path.join(self.cache_path, f)))
-            return f"{total / (1024 * 1024):.1f} MB"
-        except Exception as e:
-            logging.error("get_cache_size failed: %s", e)
-            return "0.0 MB"
+        return self._get_cover_cache().get_size()
 
     def clear_cache(self):
-        for f in os.listdir(self.cache_path):
-            try: os.remove(os.path.join(self.cache_path, f))
-            except Exception as e:
-                logging.error("clear_cache: failed to remove %s: %s", f, e)
-        return {"status": "success"}
+        return self._get_cover_cache().clear()
 
     # ─── 条目标签分类（日漫识别） ─────────────────────────
 
@@ -190,12 +150,7 @@ class AnimeProAPI:
 
     @staticmethod
     def _is_season_mainline(tags, platform):
-        """Strict seasonal-anime view: Japanese TV series without obvious promo/short noise."""
-        if platform != "TV" or not tags:
-            return False
-        tag_names = {tag.get("name", "") for tag in tags}
-        noise_tags = {"短片", "MV", "PV", "CM", "广告", "宣传片", "动态漫画"}
-        return "日本" in tag_names and not (tag_names & noise_tags)
+        return season_browser.is_season_mainline(tags, platform)
 
     def _fetch_single_subject_tags(self, subject_id):
         try:
@@ -298,19 +253,13 @@ class AnimeProAPI:
 
     def _row_to_detail(self, row):
         rating = json.loads(row["rating"]) if row["rating"] else None
-        rank = row["rank"]
-        if rank is None and rating:
-            rank = rating.get("rank")
-            if rank == 0:
-                rank = None
-        detail = {
-            "id": row["id"], "name": row["name"], "name_cn": row["name_cn"],
-            "url": row["url"], "summary": row["summary"] or "",
-            "air_date": row["air_date"],
-            "rating": rating, "rank": rank,
-            "images": {"common": row["image_common"], "large": row["image_large"]},
-            "top_tags": self._top_tags_from_cache(row["id"], limit=8),
-        }
+        collection = json.loads(row["collection"]) if row["collection"] else None
+        detail = subject_schema.subject_from_row(
+            row,
+            rating=rating,
+            collection=collection,
+            top_tags=self._top_tags_from_cache(row["id"], limit=8),
+        )
         self._process_image_urls([detail])
         return detail
 
@@ -335,16 +284,10 @@ class AnimeProAPI:
             tags = data.get("tags", [])
             if tags:
                 self.subject_tags_cache[subject_id] = tags
-            detail = {
-                "id": data["id"], "name": data.get("name"), "name_cn": data.get("name_cn"),
-                "url": data.get("url") or f"https://bgm.tv/subject/{subject_id}",
-                "summary": data.get("summary") or "",
-                "air_date": data.get("date"),
-                "rating": data.get("rating"),
-                "rank": data.get("rank") or (data.get("rating") or {}).get("rank"),
-                "images": data.get("images") or {},
-                "top_tags": self._top_tags_from_cache(subject_id, limit=8),
-            }
+            detail = subject_schema.normalize_subject(
+                data,
+                top_tags=self._top_tags_from_cache(subject_id, limit=8),
+            )
             self._process_image_urls([detail])
             return detail
         except Exception as e:
@@ -362,11 +305,18 @@ class AnimeProAPI:
             all_items.extend(day.get('items', []))
         self._process_image_urls(all_items)
         for day in data:
+            normalized_items = []
             for item in day.get('items', []):
                 tags = self.subject_tags_cache.get(item.get('id'))
+                is_jp = item.get("is_japanese")
                 if tags is not None:
-                    item['is_japanese'] = self._classify_by_tags(tags)
-                    item['top_tags'] = self._top_tags_from_cache(item.get('id'))
+                    is_jp = self._classify_by_tags(tags)
+                normalized_items.append(subject_schema.normalize_subject(
+                    item,
+                    top_tags=self._top_tags_from_cache(item.get('id')),
+                    is_japanese=is_jp,
+                ))
+            day["items"] = normalized_items
         return data
 
     # ─── 赛季浏览 ─────────────────────────────────────
@@ -379,215 +329,61 @@ class AnimeProAPI:
 
     def _fetch_season_month(self, year, month):
         """Fetch one calendar month with exact API pagination."""
-        items = []
-        offset = 0
-        total = None
-        while total is None or offset < total:
-            params = {
-                'type': 2, 'sort': 'date', 'year': year, 'month': month,
-                'limit': 100, 'offset': offset,
-            }
-            payload = self._get_bangumi_json_with_retry(params)
-            page = payload.get('data')
-            total = payload.get('total')
-            if not isinstance(page, list) or not isinstance(total, int):
-                raise ValueError(f'Invalid Bangumi response for {year}-{month:02d}')
-            items.extend(page)
-            if not page:
-                if offset < total:
-                    raise ValueError(f'Incomplete Bangumi response for {year}-{month:02d}')
-                break
-            offset += len(page)
-        return items
+        return season_browser.fetch_season_month(self, year, month)
 
     def _get_bangumi_json_with_retry(self, params, attempts=3):
         """Request Bangumi JSON with short exponential backoff."""
-        for attempt in range(1, attempts + 1):
-            try:
-                response = requests.get(
-                    'https://api.bgm.tv/v0/subjects',
-                    params=params,
-                    headers={'User-Agent': 'AnimeAsi/6.6 (github.com/animeasi)'},
-                    proxies=self._get_proxies(),
-                    timeout=(10, 30)
-                )
-                response.raise_for_status()
-                return response.json()
-            except (requests.RequestException, ValueError) as e:
-                if attempt >= attempts:
-                    raise
-                delay = 2 ** (attempt - 1)
-                logging.warning(
-                    "Bangumi request retry %s/%s: year=%s, month=%s, offset=%s, error=%s",
-                    attempt, attempts, params.get('year'), params.get('month'),
-                    params.get('offset'), e
-                )
-                time.sleep(delay)
+        return season_browser.get_bangumi_json_with_retry(self, params, attempts)
 
     def _fetch_season_data(self, year, month):
         """Fetch all three months exactly and cache only a complete result."""
-        months = [month, month + 1, month + 2]
-        all_items = []
-        try:
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                futures = {
-                    executor.submit(self._fetch_season_month, year, target_month): target_month
-                    for target_month in months
-                }
-                for future in as_completed(futures):
-                    all_items.extend(future.result())
-        except Exception as e:
-            logging.error("_fetch_season_data failed: year=%s, month=%s, error=%s", year, month, e)
-            stale = self._get_cached_season_items(year, month)
-            if stale:
-                return stale
-            raise
-
-        unique_items = {item['id']: item for item in all_items if item.get('id')}
-        complete_items = sorted(
-            unique_items.values(),
-            key=lambda item: item.get('date') or '',
-            reverse=True
-        )
-        self.db.save_season_batch(year, month, complete_items)
-        uncached = self.db.get_uncached_ids(list(unique_items))
-        if uncached:
-            if self.config.get("only_show_japanese"):
-                self._load_season_tags(uncached)
-            else:
-                threading.Thread(target=self._preload_season_tags, args=(uncached,), daemon=True).start()
-
-        return self._prepare_season_items(
-            [self._item_to_season_dict(item) for item in complete_items]
-        )
+        return season_browser.fetch_season_data(self, year, month)
 
     def _preload_season_tags(self, ids):
-        self._load_season_tags(ids)
+        return season_browser.preload_season_tags(self, ids)
 
     def _load_season_tags(self, ids):
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = {executor.submit(self._fetch_single_subject_tags, sid): sid for sid in ids}
-            for future in as_completed(futures):
-                sid = futures[future]
-                try:
-                    result = future.result()
-                    if result is not None:
-                        self.db.save_tags(sid, result)
-                        self.subject_tags_cache[sid] = result
-                except Exception as e:
-                    logging.error("_preload_season_tags: id=%s, error=%s", sid, e)
+        return season_browser.load_season_tags(self, ids)
 
     def _item_to_season_dict(self, item):
-        sid = item['id']
-        rating = item.get('rating')
-        images = item.get('images') or {}
-        rank = item.get('rank')
-        if rank is None and rating:
-            rank = rating.get('rank')
-        cached_tags = self.subject_tags_cache.get(sid)
-        is_jp = self._classify_by_tags(cached_tags) if cached_tags is not None else None
-        is_season_mainline = self._is_season_mainline(cached_tags, item.get('platform'))
-        return {
-            'id': sid,
-            'name': item.get('name'),
-            'name_cn': item.get('name_cn'),
-            'url': item.get('url') or f'https://bgm.tv/subject/{sid}',
-            'summary': item.get('summary') or '',
-            'air_date': item.get('date'),
-            'rating': rating,
-            'rank': rank,
-            'collection': item.get('collection'),
-            'platform': item.get('platform'),
-            'images': {'common': images.get('common'), 'large': images.get('large')},
-            'top_tags': self._top_tags_from_cache(sid),
-            'is_japanese': is_jp,
-            'is_season_mainline': is_season_mainline,
-        }
+        return season_browser.item_to_season_dict(self, item)
 
     def get_season_anime(self, year, month):
         """返回某一季的所有番剧列表。首次查询会从 API 拉取并缓存。"""
-        import datetime
-        year = int(year)
-        month = int(month)
-        if month not in (1, 4, 7, 10):
-            raise ValueError("Season month must be one of 1, 4, 7, 10")
-        now = datetime.date.today()
-        season_start = datetime.date(year, month, 1)
-        current_month = ((now.month - 1) // 3) * 3 + 1
-        current_season_start = datetime.date(now.year, current_month, 1)
-        max_age_hours = 24 if season_start >= current_season_start else None
-        if self.db.has_season_cache(year, month, max_age_hours=max_age_hours):
-            return self._get_cached_season_items(year, month)
-        return self._fetch_season_data(year, month)
+        return season_browser.get_season_anime(self, year, month)
 
     def _get_cached_season_items(self, year, month):
-        ids = self.db.get_season_subject_ids(year, month)
-        uncached = self.db.get_uncached_ids(ids)
-        if uncached:
-            if self.config.get("only_show_japanese"):
-                self._load_season_tags(uncached)
-            else:
-                threading.Thread(target=self._preload_season_tags, args=(uncached,), daemon=True).start()
-        items = []
-        for sid in ids:
-            row = self.db.get_subject(sid)
-            if row:
-                items.append(self._row_to_season_item(row))
-        return self._prepare_season_items(items)
+        return season_browser.get_cached_season_items(self, year, month)
 
     def _prepare_season_items(self, items):
-        items = self._apply_season_japanese_filter(items)
-        self._process_image_urls(items)
-        return items
+        return season_browser.prepare_season_items(self, items)
 
     def _apply_season_japanese_filter(self, items):
-        if not self.config.get("only_show_japanese"):
-            return items
-        return [item for item in items if item.get("is_season_mainline") is True]
+        return season_browser.apply_season_japanese_filter(self, items)
 
     def _row_to_season_item(self, row):
-        rating = json.loads(row['rating']) if row['rating'] else None
-        rank = row['rank']
-        if rank is None and rating:
-            rank = rating.get('rank')
-        collection = json.loads(row['collection']) if row['collection'] else None
-        cached_tags = self.subject_tags_cache.get(row['id'])
-        if cached_tags is not None:
-            is_jp = self._classify_by_tags(cached_tags)
-        else:
-            is_jp = None
-        is_season_mainline = self._is_season_mainline(cached_tags, row['platform'])
-        return {
-            'id': row['id'],
-            'name': row['name'],
-            'name_cn': row['name_cn'],
-            'url': row['url'],
-            'summary': row['summary'] or '',
-            'air_date': row['air_date'],
-            'rating': rating,
-            'rank': rank,
-            'collection': collection,
-            'platform': row['platform'],
-            'images': {'common': row['image_common'], 'large': row['image_large']},
-            'top_tags': self._top_tags_from_cache(row['id']),
-            'is_japanese': is_jp,
-            'is_season_mainline': is_season_mainline,
-        }
+        return season_browser.row_to_season_item(self, row)
 
     def get_favorites(self):
         try:
             favs = self.db.get_favorites()
+            normalized = []
             for item in favs:
                 img = item.get("img", "")
                 if img and img.startswith("http"):
-                    filename = img.split("/")[-1]
-                    local_path = os.path.join(self.cache_path, filename)
-                    if os.path.exists(local_path) and os.path.getsize(local_path) > 20480:
-                        item["img"] = f"/{filename}"
-                    sid = item.get("id")
-                    if sid:
-                        item["top_tags"] = self._top_tags_from_cache(sid)
-            return favs
+                    local_url = self._get_cover_cache().cached_url_for_image(img)
+                    if local_url:
+                        item["img"] = local_url
+                sid = item.get("id")
+                top_tags = None
+                if sid:
+                    top_tags = self._top_tags_from_cache(sid)
+                normalized.append(subject_schema.normalize_subject(
+                    item,
+                    top_tags=top_tags,
+                    include_legacy_img=True,
+                ))
+            return normalized
         except Exception as e:
             logging.error("get_favorites: %s", e)
             return []
@@ -635,11 +431,13 @@ class AnimeProAPI:
             resp = requests.get(url, headers={'User-Agent': 'AnimeAsi/6.6 (github.com/animeasi)'}, proxies=proxies, timeout=10)
             results = resp.json().get('list', [])
             self._process_image_urls(results)
+            normalized = []
             for r in results:
-                tags = self._top_tags_from_cache(r.get('id'))
-                if tags:
-                    r['top_tags'] = tags
-            return {"status": "success", "results": results}
+                normalized.append(subject_schema.normalize_subject(
+                    r,
+                    top_tags=self._top_tags_from_cache(r.get('id')),
+                ))
+            return {"status": "success", "results": normalized}
         except Exception as e:
             logging.error("search_anime failed: keyword=%s, error=%s", keyword, e)
             return {"status": "error", "results": []}

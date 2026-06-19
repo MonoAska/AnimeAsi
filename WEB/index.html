@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN" data-theme="dark">
 <head>
     <script>
@@ -1461,6 +1461,52 @@ function buildScheduleButtons() {
     wrap.appendChild(nextBtn);
 }
 
+const CARD_HEART_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
+const CARD_PLAY_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 19,12 8,19"/></svg>`;
+
+function createAnimeCard(item, options = {}) {
+    const name = options.name ?? (item.display_name || item.name_cn || item.name || '');
+    const img = options.img ?? (item.images?.common || item.images?.large || item.img || '');
+    const url = options.url ?? (item.url || (item.id ? `https://bgm.tv/subject/${item.id}` : ''));
+    const rating = options.rating ?? item.rating;
+    const rank = options.rank ?? item.rank;
+    const tags = options.tags ?? item.top_tags;
+    const popularityClass = popularLevel(rating, rank);
+    const tierClass = popularityClass ? ' ' + popularityClass : '';
+    const ratingHtml = rating?.score
+        ? `<div class="rating-badge${tierClass}">★ ${rating.score.toFixed(1)}</div>`
+        : '';
+    const tagsHtml = tags?.length
+        ? `<div class="card-tags">${tags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</div>`
+        : '';
+    const isFav = options.forceLiked ?? globalFavorites.some(f => f.name === name);
+    const heartClass = isFav ? 'heart-btn liked' : 'heart-btn';
+    const heartClick = options.heartClick || `handleToggleFav(event, ${safeNumber(item.id)}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(url)}', ${safeNumber(rating?.score)}, ${safeNumber(rank)}, this)`;
+    const playOverlay = options.playName
+        ? `<div class="play-btn-overlay" onclick="event.stopPropagation(); openEpisodeModal('${escAttr(options.playName)}')"><div class="play-circle">${CARD_PLAY_SVG}</div></div>`
+        : '';
+
+    const card = document.createElement('div');
+    card.className = `anime-card${popularityClass ? ' ' + popularityClass : ''}`;
+    card.innerHTML = `
+        <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${safeNumber(item.id)})" style="cursor:pointer">
+            <img loading="lazy" decoding="async" src="${escHtml(img)}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
+            ${ratingHtml}
+            ${playOverlay}
+            <div class="card-overlay" style="pointer-events:none">
+                <div class="card-overlay-title">${escapeHtml(name)}</div>
+                ${tagsHtml}
+            </div>
+            <div class="${heartClass}" onclick="${heartClick}">${CARD_HEART_SVG}</div>
+        </div>
+        <div class="card-body">
+            <button class="card-btn btn-detail" onclick="openLink('${escAttr(url)}')">🌐 详情</button>
+            <button class="card-btn btn-dl" onclick="handleSearch('${escAttr(name)}')">⬇️ 下载</button>
+        </div>
+    `;
+    return card;
+}
+
 // 💡 修复 2：去掉了重复套娃的 function 声明
 async function renderAnimeGrid() {
     const grid = document.getElementById('cardGrid');
@@ -1497,58 +1543,8 @@ async function renderAnimeGrid() {
 
     // ⭐ 关键优化
     const fragment = document.createDocumentFragment();
-
     items.forEach(item => {
-        const name = item.name_cn || item.name;
-        const img = item.images?.common || '';
-
-        const isFav = globalFavorites.some(f => f.name === name);
-        const heartClass = isFav ? 'heart-btn liked' : 'heart-btn';
-        const rating = item.rating;
-
-        // 人气等级
-        const popularityClass = popularLevel(rating, item.rank);
-
-        const tierBadgeClass = popularityClass ? ' ' + popularityClass : '';
-        const ratingHtml = rating?.score
-            ? `<div class="rating-badge${tierBadgeClass}">★ ${rating.score.toFixed(1)}</div>`
-            : '';
-        const tags = item.top_tags;
-        const tagsHtml = tags?.length
-            ? `<div class="card-tags">${tags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</div>`
-            : '';
-
-        const card = document.createElement('div');
-        card.className = `anime-card${popularityClass ? ' ' + popularityClass : ''}`;
-
-        card.innerHTML = `
-            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${safeNumber(item.id)})" style="cursor:pointer">
-                <img
-                    loading="lazy"
-                    decoding="async"
-                    src="${escHtml(img)}"
-                    onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'"
-                >
-                ${ratingHtml}
-                <div class="card-overlay" style="pointer-events:none">
-                    <div class="card-overlay-title">${escapeHtml(name)}</div>
-                    ${tagsHtml}
-                </div>
-
-                <div class="${heartClass}" onclick="handleToggleFav(event, ${safeNumber(item.id)}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(item.url)}', ${safeNumber(item.rating?.score)}, ${safeNumber(item.rank)}, this)">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                    </svg>
-                </div>
-            </div>
-
-            <div class="card-body">
-                <button class="card-btn btn-detail" onclick="openLink('${escAttr(item.url)}')">🌐 详情</button>
-                <button class="card-btn btn-dl" onclick="handleSearch('${escAttr(name)}')">⬇️ 下载</button>
-            </div>
-        `;
-
-        fragment.appendChild(card);
+        fragment.appendChild(createAnimeCard(item));
     });
 
     // ⭐ 一次性插入 DOM
@@ -1618,7 +1614,7 @@ async function openDetailModal(subjectId) {
         if (d.error) { body.innerHTML = `<div style="text-align:center;padding:40px;color:var(--txt3);">加载失败: ${escapeHtml(d.error)}</div>`; return; }
 
         const img = d.images?.large || d.images?.common || '';
-        const name = d.name_cn || d.name || '';
+        const name = d.display_name || d.name_cn || d.name || '';
         const nameSub = d.name_cn ? d.name : '';
         const ratingHtml = d.rating?.score
             ? `<span class="detail-score${d.rank && d.rank < 1000 ? ' top' : ''}">★ ${d.rating.score.toFixed(1)}</span>`
@@ -1670,39 +1666,16 @@ function renderFavGrid() {
     }
 
     globalFavorites.forEach(item => {
-        const card = document.createElement('div');
-        const favRating = item.rating;
-        const favPopularityClass = popularLevel(favRating, item.rank);
-        const favTierClass = favPopularityClass ? ' ' + favPopularityClass : '';
-        card.className = `anime-card${favPopularityClass ? ' ' + favPopularityClass : ''}`;
-        const favRatingHtml = favRating?.score
-            ? `<div class="rating-badge${favTierClass}">★ ${favRating.score.toFixed(1)}</div>`
-            : '';
-        const favTags = item.top_tags;
-        const favTagsHtml = favTags?.length
-            ? `<div class="card-tags">${favTags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</div>`
-            : '';
-        card.innerHTML = `
-            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${safeNumber(item.id)})" style="cursor:pointer">
-                <img src="${escHtml(item.img)}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
-                ${favRatingHtml}
-                <div class="play-btn-overlay" onclick="event.stopPropagation(); openEpisodeModal('${escAttr(item.name)}')">
-                  <div class="play-circle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 19,12 8,19"/></svg></div>
-                </div>
-                <div class="card-overlay" style="pointer-events:none">
-                    <div class="card-overlay-title">${escapeHtml(item.name)}</div>
-                    ${favTagsHtml}
-                </div>
-                <div class="heart-btn liked" onclick="(async () => { await handleToggleFav(event, ${safeNumber(item.id)}, '${escAttr(item.name)}', '${escAttr(item.img)}', '${escAttr(item.url)}', 0, 0, event.currentTarget); renderFavGrid(); renderAnimeGrid(); })()">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                </div>
-            </div>
-            <div class="card-body">
-                <button class="card-btn btn-detail" onclick="openLink('${escAttr(item.url)}')">🌐 详情</button>
-                <button class="card-btn btn-dl" onclick="handleSearch('${escAttr(item.name)}')">⬇️ 下载</button>
-            </div>
-        `;
-        grid.appendChild(card);
+        const favName = item.display_name || item.name;
+        const favImg = item.images?.common || item.img;
+        const heartClick = `(async () => { await handleToggleFav(event, ${safeNumber(item.id)}, '${escAttr(favName)}', '${escAttr(favImg)}', '${escAttr(item.url)}', 0, 0, event.currentTarget); renderFavGrid(); renderAnimeGrid(); })()`;
+        grid.appendChild(createAnimeCard(item, {
+            name: favName,
+            img: favImg,
+            forceLiked: true,
+            playName: favName,
+            heartClick,
+        }));
     });
 }
 // ================= 新增：缓存管理逻辑 =================
@@ -1854,43 +1827,9 @@ function renderAnimeSearchGrid(keyword, items) {
     grid.innerHTML = '';
 
     items.slice(0, 18).forEach(item => {
-        const name = item.name_cn || item.name;
         const img = item.images?.large || item.images?.common || 'https://via.placeholder.com/120x162?text=No+Cover';
         const url = item.url || `https://bgm.tv/subject/${item.id}`;
-
-        const isFav = globalFavorites.some(f => f.name === name);
-        const heartClass = isFav ? 'heart-btn liked' : 'heart-btn';
-        const sRating = item.rating;
-        const sPopularityClass = popularLevel(sRating, item.rank);
-        const sTierClass = sPopularityClass ? ' ' + sPopularityClass : '';
-        const sRatingHtml = sRating?.score
-            ? `<div class="rating-badge${sTierClass}">★ ${sRating.score.toFixed(1)}</div>`
-            : '';
-        const sTags = item.top_tags;
-        const sTagsHtml = sTags?.length
-            ? `<div class="card-tags">${sTags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</div>`
-            : '';
-
-        const card = document.createElement('div');
-        card.className = `anime-card${sPopularityClass ? ' ' + sPopularityClass : ''}`;
-        card.innerHTML = `
-            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${safeNumber(item.id)})" style="cursor:pointer">
-                <img loading="lazy" decoding="async" src="${escHtml(img)}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
-                ${sRatingHtml}
-                <div class="card-overlay" style="pointer-events:none">
-                    <div class="card-overlay-title">${escapeHtml(name)}</div>
-                    ${sTagsHtml}
-                </div>
-                <div class="${heartClass}" onclick="handleToggleFav(event, ${safeNumber(item.id)}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(url)}', ${safeNumber(item.rating?.score)}, ${safeNumber(item.rank)}, this)">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                </div>
-            </div>
-            <div class="card-body">
-                <button class="card-btn btn-detail" onclick="openLink('${escAttr(url)}')">🌐 详情</button>
-                <button class="card-btn btn-dl" onclick="handleSearch('${escAttr(name)}')">⬇️ 下载</button>
-            </div>
-        `;
-        grid.appendChild(card);
+        grid.appendChild(createAnimeCard(item, { img, url }));
     });
 }
 
@@ -2336,37 +2275,7 @@ async function renderSeasonGrid(expectedLoadToken = null) {
     buildSortBar();
     const fragment = document.createDocumentFragment();
     items.forEach(item => {
-        const name = item.name_cn || item.name;
-        const img = item.images?.common || '';
-        const isFav = globalFavorites.some(f => f.name === name);
-        const rating = item.rating;
-        const popularityClass = popularLevel(rating, item.rank);
-        const tierBadgeClass = popularityClass ? ' ' + popularityClass : '';
-        const ratingHtml = rating?.score
-            ? `<div class="rating-badge${tierBadgeClass}">★ ${rating.score.toFixed(1)}</div>`
-            : '';
-        const tags = item.top_tags;
-        const tagsHtml = tags?.length
-            ? `<div class="card-tags">${tags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</div>` : '';
-        const card = document.createElement('div');
-        card.className = `anime-card${popularityClass ? ' ' + popularityClass : ''}`;
-        card.innerHTML = `
-            <div class="card-poster" onclick="event.stopPropagation(); openDetailModal(${safeNumber(item.id)})" style="cursor:pointer">
-                <img loading="lazy" decoding="async" src="${escHtml(img)}" onerror="this.src='https://via.placeholder.com/120x162?text=No+Cover'">
-                ${ratingHtml}
-                <div class="card-overlay" style="pointer-events:none">
-                    <div class="card-overlay-title">${escapeHtml(name)}</div>
-                    ${tagsHtml}
-                </div>
-                <div class="${isFav ? 'heart-btn liked' : 'heart-btn'}" onclick="handleToggleFav(event, ${safeNumber(item.id)}, '${escAttr(name)}', '${escAttr(img)}', '${escAttr(item.url)}', ${safeNumber(item.rating?.score)}, ${safeNumber(item.rank)}, this)">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                </div>
-            </div>
-            <div class="card-body">
-                <button class="card-btn btn-detail" onclick="openLink('${escAttr(item.url)}')">🌐 详情</button>
-                <button class="card-btn btn-dl" onclick="handleSearch('${escAttr(name)}')">⬇️ 下载</button>
-            </div>`;
-        fragment.appendChild(card);
+        fragment.appendChild(createAnimeCard(item));
     });
     grid.appendChild(fragment);
     requestAnimationFrame(() => { safeCreateIcons(); });
