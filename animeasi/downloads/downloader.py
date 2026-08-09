@@ -39,10 +39,10 @@ def _search_single_source(keyword: str, source: RSSSource, proxies: dict = None)
     return torrent_sources.search_single_source(keyword, source, proxies)
 
 
-def search_torrents(anime_name: str, sources: list[dict] = None, proxies: dict = None) -> tuple[str, list]:
+def search_torrents(keywords, sources: list[dict] = None, proxies: dict = None) -> tuple[str, list, list]:
     torrent_sources.requests = requests
     torrent_sources.feedparser = feedparser
-    return torrent_sources.search_torrents(anime_name, sources, proxies)
+    return torrent_sources.search_torrents(keywords, sources, proxies)
 
 
 __all__ = [

@@ -6,7 +6,10 @@ import sqlite3
 import json
 import logging
 import threading
+from datetime import datetime, timezone
 from functools import wraps
+
+from animeasi.subjects.aliases import extract_search_aliases
 
 
 def synchronized(method):
@@ -20,6 +23,23 @@ def synchronized(method):
                     self.conn.rollback()
                 raise
     return wrapper
+
+
+def _to_local_time(value):
+    """Convert a naive UTC timestamp from SQLite to the local timezone.
+
+    SQLite ``datetime('now')`` stores UTC; user-facing RSS timestamps should
+    display in the machine's local timezone.
+    """
+    if not value:
+        return value
+    try:
+        parsed = datetime.fromisoformat(str(value))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return value
 
 WEEKDAYS = [
     {"id": 1, "en": "Mon", "cn": "周一", "jp": "月曜日"},
@@ -66,6 +86,12 @@ class AnimeDB:
                 tag_count INTEGER DEFAULT 0,
                 PRIMARY KEY (subject_id, tag_name)
             );
+            CREATE TABLE IF NOT EXISTS subject_aliases (
+                subject_id INTEGER,
+                alias TEXT,
+                PRIMARY KEY (subject_id, alias)
+            );
+            CREATE INDEX IF NOT EXISTS idx_subject_aliases_subject ON subject_aliases(subject_id);
             CREATE TABLE IF NOT EXISTS calendar (
                 subject_id INTEGER PRIMARY KEY,
                 weekday INTEGER
@@ -101,6 +127,55 @@ class AnimeDB:
                 fetched_at TEXT DEFAULT (datetime('now')),
                 PRIMARY KEY (year, month)
             );
+            CREATE TABLE IF NOT EXISTS rss_subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                keyword TEXT NOT NULL,
+                search_aliases TEXT DEFAULT '',
+                include_keywords TEXT DEFAULT '',
+                exclude_keywords TEXT DEFAULT '',
+                group_filter TEXT DEFAULT '',
+                quality_filter TEXT DEFAULT '',
+                save_path TEXT DEFAULT '',
+                enabled INTEGER DEFAULT 1,
+                auto_push INTEGER DEFAULT 0,
+                last_checked_at TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS rss_download_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subscription_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                url TEXT NOT NULL,
+                source TEXT DEFAULT '',
+                size TEXT DEFAULT '',
+                save_path TEXT DEFAULT '',
+                status TEXT NOT NULL,
+                message TEXT DEFAULT '',
+                pushed_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY(subscription_id) REFERENCES rss_subscriptions(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS rss_current_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subscription_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                url TEXT NOT NULL,
+                source TEXT DEFAULT '',
+                size TEXT DEFAULT '',
+                meta_json TEXT DEFAULT '{}',
+                resource_tags_json TEXT DEFAULT '[]',
+                matched_keyword TEXT DEFAULT '',
+                status TEXT DEFAULT 'pending',
+                message TEXT DEFAULT '',
+                discovered_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY(subscription_id) REFERENCES rss_subscriptions(id) ON DELETE CASCADE,
+                UNIQUE(subscription_id, url)
+            );
+            CREATE INDEX IF NOT EXISTS idx_rss_tasks_subscription ON rss_current_tasks(subscription_id, status, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_rss_records_subscription ON rss_download_records(subscription_id, pushed_at DESC);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_rss_records_url ON rss_download_records(subscription_id, url);
         """)
         season_columns = {
             row["name"] for row in self.conn.execute("PRAGMA table_info(season_subjects)")
@@ -115,10 +190,16 @@ class AnimeDB:
         if "platform" not in subject_columns:
             self.conn.execute("ALTER TABLE subjects ADD COLUMN platform TEXT")
             self.conn.execute("DELETE FROM season_cache")
+        rss_columns = {
+            row["name"] for row in self.conn.execute("PRAGMA table_info(rss_subscriptions)")
+        }
+        if "search_aliases" not in rss_columns:
+            self.conn.execute(
+                "ALTER TABLE rss_subscriptions ADD COLUMN search_aliases TEXT DEFAULT ''"
+            )
         self.conn.commit()
 
     # ─── Calendar ───────────────────────────────────────
-
     @synchronized
     def save_calendar(self, data):
         """data: Bangumi calendar API response"""
@@ -240,6 +321,24 @@ class AnimeDB:
         return result
 
     @synchronized
+    def get_subject_aliases(self, subject_id):
+        rows = self.conn.execute(
+            "SELECT alias FROM subject_aliases WHERE subject_id = ? ORDER BY rowid",
+            (subject_id,),
+        ).fetchall()
+        return [row["alias"] for row in rows]
+
+    @synchronized
+    def get_all_subject_aliases(self):
+        rows = self.conn.execute(
+            "SELECT subject_id, alias FROM subject_aliases ORDER BY rowid"
+        ).fetchall()
+        result = {}
+        for row in rows:
+            result.setdefault(row["subject_id"], []).append(row["alias"])
+        return result
+
+    @synchronized
     def save_subject_full(self, data):
         """从 Bangumi v0 API 完整数据存入 subjects 表并保存标签。"""
         c = self.conn
@@ -289,6 +388,13 @@ class AnimeDB:
                 "INSERT INTO subject_tags (subject_id, tag_name, tag_count) VALUES (?, ?, ?)",
                 [(sid, t["name"], t.get("count", 0)) for t in tags]
             )
+        aliases = extract_search_aliases(data)
+        c.execute("DELETE FROM subject_aliases WHERE subject_id = ?", (sid,))
+        if aliases:
+            c.executemany(
+                "INSERT INTO subject_aliases (subject_id, alias) VALUES (?, ?)",
+                [(sid, alias) for alias in aliases],
+            )
         c.commit()
 
     # ─── Favorites ──────────────────────────────────────
@@ -321,39 +427,358 @@ class AnimeDB:
 
     @synchronized
     def toggle_favorite(self, anime_data):
-        name = anime_data.get("name")
+        name = str(anime_data.get("name") or "").strip()
+        if not name:
+            raise ValueError("Favorite name is required")
+
+        try:
+            sid = int(anime_data.get("id") or 0)
+        except (TypeError, ValueError):
+            sid = 0
+
         c = self.conn
-        existing = c.execute(
-            "SELECT subject_id FROM favorites WHERE name = ?", (name,)
-        ).fetchone()
+        if sid:
+            existing = c.execute(
+                "SELECT 1 FROM favorites WHERE subject_id = ?", (sid,)
+            ).fetchone()
+        else:
+            existing = c.execute(
+                "SELECT 1 FROM favorites WHERE subject_id = 0 AND name = ?", (name,)
+            ).fetchone()
+
         if existing:
-            c.execute("DELETE FROM favorites WHERE name = ?", (name,))
+            if sid:
+                c.execute("DELETE FROM favorites WHERE subject_id = ?", (sid,))
+            else:
+                c.execute(
+                    "DELETE FROM favorites WHERE subject_id = 0 AND name = ?", (name,)
+                )
             c.commit()
             return False
-        else:
-            sid = anime_data.get("id", 0)
-            rating = anime_data.get("rating")
-            rank = anime_data.get("rank")
-            # 将番剧元数据写入 subjects 表，确保后续 get_favorites 的 JOIN 能命中
-            # （搜索结果、非当季番剧的评分数据不在 calendar 中）
-            if rating and sid:
-                c.execute(
-                    """INSERT OR IGNORE INTO subjects
-                       (id, name, rating, rank, url, image_common)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (sid, name,
-                     json.dumps(rating, ensure_ascii=False) if isinstance(rating, dict) else json.dumps({"score": rating}),
-                     rank,
-                     anime_data.get("url", ""),
-                     anime_data.get("img", ""))
-                )
-            c.execute(
-                "INSERT INTO favorites (subject_id, name, img, url) VALUES (?, ?, ?, ?)",
-                (sid, name, anime_data.get("img", ""), anime_data.get("url", ""))
-            )
-            c.commit()
-            return True
 
+        rating = anime_data.get("rating")
+        rank = anime_data.get("rank")
+        # 将番剧元数据写入 subjects 表，确保后续 get_favorites 的 JOIN 能命中
+        # （搜索结果、非当季番剧的评分数据不在 calendar 中）
+        if rating and sid:
+            c.execute(
+                """INSERT OR IGNORE INTO subjects
+                   (id, name, rating, rank, url, image_common)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (sid, name,
+                 json.dumps(rating, ensure_ascii=False) if isinstance(rating, dict) else json.dumps({"score": rating}),
+                 rank,
+                 anime_data.get("url", ""),
+                 anime_data.get("img", ""))
+            )
+        c.execute(
+            "INSERT INTO favorites (subject_id, name, img, url) VALUES (?, ?, ?, ?)",
+            (sid, name, anime_data.get("img", ""), anime_data.get("url", ""))
+        )
+        c.commit()
+        return True
+
+    # ─── RSS subscriptions ──────────────────────────────
+
+    @staticmethod
+    def _rss_subscription_from_row(row):
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "keyword": row["keyword"],
+            "search_aliases": row["search_aliases"] or "",
+            "include_keywords": row["include_keywords"] or "",
+            "exclude_keywords": row["exclude_keywords"] or "",
+            "group_filter": row["group_filter"] or "",
+            "quality_filter": row["quality_filter"] or "",
+            "save_path": row["save_path"] or "",
+            "enabled": bool(row["enabled"]),
+            "auto_push": bool(row["auto_push"]),
+            "last_checked_at": _to_local_time(row["last_checked_at"]),
+            "created_at": _to_local_time(row["created_at"]),
+            "updated_at": _to_local_time(row["updated_at"]),
+        }
+
+    @synchronized
+    def list_rss_subscriptions(self):
+        rows = self.conn.execute(
+            "SELECT * FROM rss_subscriptions ORDER BY enabled DESC, updated_at DESC, id DESC"
+        ).fetchall()
+        return [self._rss_subscription_from_row(row) for row in rows]
+
+    @synchronized
+    def get_rss_subscription(self, subscription_id):
+        row = self.conn.execute(
+            "SELECT * FROM rss_subscriptions WHERE id = ?",
+            (subscription_id,)
+        ).fetchone()
+        return self._rss_subscription_from_row(row) if row else None
+
+    @synchronized
+    def save_rss_subscription(self, data):
+        sub_id = data.get("id")
+        name = (data.get("name") or data.get("keyword") or "未命名订阅").strip()
+        keyword = (data.get("keyword") or name).strip()
+        values = (
+            name,
+            keyword,
+            data.get("search_aliases", "") or "",
+            data.get("include_keywords", "") or "",
+            data.get("exclude_keywords", "") or "",
+            data.get("group_filter", "") or "",
+            data.get("quality_filter", "") or "",
+            data.get("save_path", "") or "",
+            1 if data.get("enabled", True) else 0,
+            1 if data.get("auto_push", False) else 0,
+        )
+        clear_tasks = False
+        if sub_id:
+            current = self.conn.execute(
+                """SELECT keyword, search_aliases, include_keywords, exclude_keywords,
+                          group_filter, quality_filter
+                   FROM rss_subscriptions WHERE id = ?""",
+                (sub_id,),
+            ).fetchone()
+            if current:
+                previous_rule = tuple((current[key] or "") for key in (
+                    "keyword", "search_aliases", "include_keywords", "exclude_keywords",
+                    "group_filter", "quality_filter",
+                ))
+                next_rule = (values[1], values[2], values[3], values[4], values[5], values[6])
+                clear_tasks = previous_rule != next_rule
+            self.conn.execute(
+                """UPDATE rss_subscriptions SET
+                   name = ?, keyword = ?, search_aliases = ?, include_keywords = ?, exclude_keywords = ?,
+                   group_filter = ?, quality_filter = ?, save_path = ?, enabled = ?,
+                   auto_push = ?, updated_at = datetime('now')
+                   WHERE id = ?""",
+                values + (sub_id,)
+            )
+            saved_id = int(sub_id)
+            if clear_tasks:
+                self.conn.execute(
+                    "DELETE FROM rss_current_tasks WHERE subscription_id = ?",
+                    (saved_id,),
+                )
+        else:
+            cur = self.conn.execute(
+                """INSERT INTO rss_subscriptions
+                   (name, keyword, search_aliases, include_keywords, exclude_keywords,
+                    group_filter, quality_filter, save_path, enabled, auto_push)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                values
+            )
+            saved_id = cur.lastrowid
+        self.conn.commit()
+        return self.get_rss_subscription(saved_id)
+
+    @synchronized
+    def delete_rss_subscription(self, subscription_id):
+        self.conn.execute("DELETE FROM rss_current_tasks WHERE subscription_id = ?", (subscription_id,))
+        self.conn.execute("DELETE FROM rss_download_records WHERE subscription_id = ?", (subscription_id,))
+        self.conn.execute("DELETE FROM rss_subscriptions WHERE id = ?", (subscription_id,))
+        self.conn.commit()
+        return True
+
+    @synchronized
+    def set_rss_subscription_enabled(self, subscription_id, enabled):
+        self.conn.execute(
+            "UPDATE rss_subscriptions SET enabled = ?, updated_at = datetime('now') WHERE id = ?",
+            (1 if enabled else 0, subscription_id)
+        )
+        self.conn.commit()
+        return self.get_rss_subscription(subscription_id)
+
+    @synchronized
+    def mark_rss_subscription_checked(self, subscription_id):
+        self.conn.execute(
+            "UPDATE rss_subscriptions SET last_checked_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+            (subscription_id,)
+        )
+        self.conn.commit()
+
+    @synchronized
+    def has_rss_download_record(self, subscription_id, url, title):
+        row = self.conn.execute(
+            """SELECT 1 FROM rss_download_records
+               WHERE subscription_id = ? AND status = 'success'
+                 AND (url = ? OR title = ?) LIMIT 1""",
+            (subscription_id, url or "", title or "")
+        ).fetchone()
+        return row is not None
+
+    @synchronized
+    def record_rss_download(self, subscription_id, result, status, message, save_path):
+        self.conn.execute(
+            """INSERT OR REPLACE INTO rss_download_records
+               (subscription_id, title, url, source, size, save_path, status, message)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                subscription_id,
+                result.get("title", ""),
+                result.get("url", ""),
+                result.get("source", ""),
+                result.get("size", ""),
+                save_path or "",
+                status,
+                message or "",
+            )
+        )
+        self.conn.execute(
+            """UPDATE rss_current_tasks SET status = ?, message = ?, updated_at = datetime('now')
+               WHERE subscription_id = ? AND (url = ? OR title = ?)""",
+            (status, message or "", subscription_id, result.get("url", ""), result.get("title", "")),
+        )
+        self.conn.commit()
+
+    @synchronized
+    def sync_rss_current_tasks(self, subscription_id, results, prune_missing=False):
+        for result in results:
+            url = str(result.get("url") or "")
+            title = str(result.get("title") or "")
+            if not url or not title:
+                continue
+            completed = self.conn.execute(
+                """SELECT 1 FROM rss_download_records
+                   WHERE subscription_id = ? AND status = 'success'
+                     AND (url = ? OR title = ?) LIMIT 1""",
+                (subscription_id, url, title),
+            ).fetchone()
+            status = "success" if completed else "pending"
+            self.conn.execute(
+                """INSERT INTO rss_current_tasks
+                   (subscription_id, title, url, source, size, meta_json,
+                    resource_tags_json, matched_keyword, status, message)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '')
+                   ON CONFLICT(subscription_id, url) DO UPDATE SET
+                       title = excluded.title,
+                       source = excluded.source,
+                       size = excluded.size,
+                       meta_json = excluded.meta_json,
+                       resource_tags_json = excluded.resource_tags_json,
+                       matched_keyword = excluded.matched_keyword,
+                       status = CASE
+                           WHEN rss_current_tasks.status = 'success' OR excluded.status = 'success'
+                           THEN 'success' ELSE 'pending' END,
+                       message = CASE
+                           WHEN rss_current_tasks.status = 'success' THEN rss_current_tasks.message
+                           ELSE '' END,
+                       updated_at = datetime('now')""",
+                (
+                    subscription_id,
+                    title,
+                    url,
+                    result.get("source", "") or "",
+                    result.get("size", "") or "",
+                    json.dumps(result.get("meta") or {}, ensure_ascii=False),
+                    json.dumps(result.get("resource_tags") or [], ensure_ascii=False),
+                    result.get("matched_keyword", "") or "",
+                    status,
+                ),
+            )
+        if prune_missing and results:
+            # 整轮检查健康且返回了真实结果时，清理已从 RSS 源消失的任务。
+            # 只清理未成功的（pending/error）；已下载成功的保留作可见记录。
+            current_urls = [
+                str(result.get("url") or "") for result in results if str(result.get("url") or "")
+            ]
+            if current_urls:
+                placeholders = ",".join("?" for _ in current_urls)
+                self.conn.execute(
+                    f"""DELETE FROM rss_current_tasks
+                        WHERE subscription_id = ? AND status != 'success'
+                          AND url NOT IN ({placeholders})""",
+                    [subscription_id, *current_urls],
+                )
+        self.conn.commit()
+
+    @staticmethod
+    def _rss_task_from_row(row):
+        try:
+            meta = json.loads(row["meta_json"] or "{}")
+        except (TypeError, ValueError):
+            meta = {}
+        try:
+            resource_tags = json.loads(row["resource_tags_json"] or "[]")
+        except (TypeError, ValueError):
+            resource_tags = []
+        return {
+            "id": row["id"],
+            "subscription_id": row["subscription_id"],
+            "title": row["title"],
+            "url": row["url"],
+            "source": row["source"] or "",
+            "size": row["size"] or "",
+            "meta": meta,
+            "resource_tags": resource_tags,
+            "matched_keyword": row["matched_keyword"] or "",
+            "status": row["status"] or "pending",
+            "message": row["message"] or "",
+            "discovered_at": _to_local_time(row["discovered_at"]),
+            "updated_at": _to_local_time(row["updated_at"]),
+        }
+
+    @synchronized
+    def list_rss_current_tasks(self, subscription_id=None, limit=500):
+        params = []
+        where = ""
+        if subscription_id is not None:
+            where = "WHERE subscription_id = ?"
+            params.append(int(subscription_id))
+        params.append(max(1, min(int(limit), 1000)))
+        rows = self.conn.execute(
+            f"""SELECT * FROM rss_current_tasks {where}
+                ORDER BY subscription_id, id DESC LIMIT ?""",
+            params,
+        ).fetchall()
+        return [self._rss_task_from_row(row) for row in rows]
+
+    @synchronized
+    def get_rss_current_tasks(self, subscription_id, task_ids):
+        ids = [int(task_id) for task_id in task_ids][:50]
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        rows = self.conn.execute(
+            f"""SELECT * FROM rss_current_tasks
+                WHERE subscription_id = ? AND id IN ({placeholders})
+                ORDER BY id""",
+            [int(subscription_id), *ids],
+        ).fetchall()
+        return [self._rss_task_from_row(row) for row in rows]
+
+    @synchronized
+    def update_rss_current_task(self, task_id, status, message=""):
+        self.conn.execute(
+            """UPDATE rss_current_tasks SET status = ?, message = ?, updated_at = datetime('now')
+               WHERE id = ?""",
+            (status, message or "", int(task_id)),
+        )
+        self.conn.commit()
+
+    @synchronized
+    def list_rss_download_records(self, limit=80):
+        rows = self.conn.execute(
+            """SELECT r.*, s.name AS subscription_name
+               FROM rss_download_records r
+               LEFT JOIN rss_subscriptions s ON s.id = r.subscription_id
+               ORDER BY r.pushed_at DESC, r.id DESC
+               LIMIT ?""",
+            (int(limit),)
+        ).fetchall()
+        return [{
+            "id": row["id"],
+            "subscription_id": row["subscription_id"],
+            "subscription_name": row["subscription_name"] or "",
+            "title": row["title"],
+            "url": row["url"],
+            "source": row["source"],
+            "size": row["size"],
+            "save_path": row["save_path"],
+            "status": row["status"],
+            "message": row["message"],
+            "pushed_at": _to_local_time(row["pushed_at"]),
+        } for row in rows]
     # ─── Watch history ──────────────────────────────────
 
     @synchronized

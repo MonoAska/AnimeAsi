@@ -64,6 +64,11 @@ def parse_torrent_title(title: str) -> dict:
         r"(?i)\bseason\s*\d{1,2}\s*[-_]\s*(\d{1,3})(?:v\d+)?\b",
         text,
     )
+    if not season_episode_match:
+        season_episode_match = re.search(
+            r"(?i)\bs\d{1,2}e(\d{1,3})(?:v\d+)?\b",
+            text,
+        )
 
     range_match = None
     if not season_episode_match or batch_match:

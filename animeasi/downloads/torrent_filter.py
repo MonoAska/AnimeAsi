@@ -2,6 +2,16 @@ import re
 import urllib.parse
 
 
+_NON_VIDEO_PATTERNS = (
+    re.compile(r"(?i)\b(?:ost|soundtrack|flac|mp3|epub|pdf|manga|comic)\b"),
+    re.compile(r"(?:漫画|コミック|音楽|主题曲|主題歌|OPテーマ|EDテーマ)"),
+)
+
+
+def is_probable_anime_video_title(title: str) -> bool:
+    text = str(title or "")
+    return bool(text) and not any(pattern.search(text) for pattern in _NON_VIDEO_PATTERNS)
+
 def is_download_url(url: str, link_meta: dict = None) -> bool:
     if not url:
         return False
