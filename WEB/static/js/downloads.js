@@ -157,9 +157,15 @@ function renderTorrentList(animeName, results, keywords, fromCache = false) {
 }
 
 function renderTorrentTags(t) {
-    const tags = Array.isArray(t.resource_tags) ? t.resource_tags : [];
+    const tags = Array.isArray(t.resource_tags) ? [...t.resource_tags] : [];
+    if (t.size) {
+        tags.push({ text: t.size, isSize: true });
+    }
     if (!tags.length) return '<div class="torrent-tags"><span class="torrent-tag unknown">集数未知</span></div>';
     return `<div class="torrent-tags">${tags.map(tag => {
+        if (tag && tag.isSize) {
+            return `<span class="torrent-tag size" title="文件大小">${escapeHtml(tag.text)}</span>`;
+        }
         const tagText = String(tag || '');
         const cls = tagText === '合集'
             ? 'torrent-tag batch'

@@ -343,10 +343,14 @@ function renderRssHistory() {
     rssHistory.forEach(item => {
         const row = document.createElement('div');
         row.className = 'rss-history-item';
+        const isSuccess = item.status === 'success' || item.status === 'completed';
+        const isFailed = item.status === 'failed' || item.status === 'error';
+        const statusLabel = isSuccess ? '推送成功' : (isFailed ? '推送失败' : (item.status || '未知'));
+        const statusCls = isSuccess ? 'hot' : (isFailed ? 'danger' : 'off');
         row.innerHTML = `
             <div class="rss-history-title" title="${escHtml(item.title)}">${escapeHtml(item.title)}</div>
             <div class="rss-history-meta">
-                <span class="rss-chip ${item.status === 'success' ? 'hot' : 'off'}">${escapeHtml(item.status)}</span>
+                <span class="rss-chip ${statusCls}">${escapeHtml(statusLabel)}</span>
                 <span class="rss-chip">${escapeHtml(item.subscription_name || '订阅')}</span>
                 ${item.size ? `<span class="rss-chip">${escapeHtml(item.size)}</span>` : ''}
                 <span class="rss-chip">${escapeHtml(item.pushed_at || '')}</span>

@@ -1,11 +1,33 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN" data-theme="dark">
 <head>
     <script>
-        // 💡 瞬时预判：在页面加载任何东西之前，先从浏览器本地缓存读取主题
+        // 💡 瞬时预判：在页面加载任何东西之前，先从浏览器本地缓存读取主题模式与配色
         (function() {
-            const savedTheme = localStorage.getItem('app-theme') || 'dark';
-            document.documentElement.setAttribute('data-theme', savedTheme);
+            var VALID_MODES = ['dark', 'light'];
+            var VALID_COLORS = ['purple', 'nature', 'sakura', 'sky', 'autumn'];
+
+            var savedTheme = localStorage.getItem('app-theme');
+            var defaultMode = 'dark';
+            var defaultColor = 'purple';
+            if (savedTheme) {
+                if (savedTheme === 'light') {
+                    defaultMode = 'light';
+                    defaultColor = 'purple';
+                } else if (['nature', 'sakura', 'sky', 'autumn'].indexOf(savedTheme) !== -1) {
+                    defaultMode = 'light';
+                    defaultColor = savedTheme;
+                }
+            }
+
+            var mode = localStorage.getItem('app-theme-mode') || defaultMode;
+            var color = localStorage.getItem('app-theme-color') || defaultColor;
+
+            if (VALID_MODES.indexOf(mode) === -1) mode = 'dark';
+            if (VALID_COLORS.indexOf(color) === -1) color = 'purple';
+
+            document.documentElement.setAttribute('data-theme', mode);
+            document.documentElement.setAttribute('data-color', color);
         })();
     </script>
     <meta charset="UTF-8">
@@ -13,11 +35,11 @@
         :root {
             /* 使用系统预装的高级字体，完全不需要网络加载 */
             --font-main: 'Segoe UI', 'SF Pro Display', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-            --bg: #0d0f1a;
-            --txt1: #e8e4ff;
+            --bg: #0b0d18;
+            --txt1: #e9e6ff;
         }
-        [data-theme="light"] {
-            --bg: #f4f3ff;
+        html[data-theme="light"] {
+            --bg: #f4f3fb;
             --txt1: #1a1630;
         }
         html, body {
@@ -29,7 +51,7 @@
     </style>
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AnimeAsi v1.7.1 — 全能番剧中枢</title>
+<title>AnimeAsi v1.7.2 — 全能番剧中枢</title>
 <script src="static/js/lucide.min.js" defer></script>
 <link rel="stylesheet" href="static/css/app.css">
 </head>
@@ -60,8 +82,10 @@
         <i data-lucide="rss" width="16" height="16"></i>
       </div>
 
-      <div class="theme-toggle" id="themeToggle" title="切换主题">
-        <div class="theme-toggle-thumb"><span id="themeIcon">🌙</span></div>
+      <div class="theme-toggle" id="themeToggle" onclick="toggleThemeMode()" title="切换亮/暗模式">
+        <div class="theme-toggle-thumb">
+          <i data-lucide="moon" id="themeIcon" width="12" height="12"></i>
+        </div>
       </div>
 
       <div class="icon-btn" id="openFolderBtn" title="打开本地动漫库" onclick="openAnimeFolder()">
@@ -363,7 +387,11 @@
     </div>
 
     <div class="modal-body">
-      
+
+      <div class="settings-section">
+        <div class="settings-section-title">主题配色</div>
+        <div class="theme-color-palette" id="themeColorPalette"></div>
+      </div>
       <div class="settings-section">
         <div class="settings-section-title">本地动漫库</div>
         <div class="form-row">
@@ -461,7 +489,7 @@
       <div class="settings-section">
         <div class="settings-section-title">关于</div>
         <div class="about-content">
-          <div class="about-row"><span class="about-label">版本</span><span class="about-value">v1.7.1</span></div>
+          <div class="about-row"><span class="about-label">版本</span><span class="about-value">v1.7.2</span></div>
           <div class="about-row"><span class="about-label">数据来源</span><span class="about-value">Bangumi 番组计划</span></div>
         </div>
       </div>
@@ -520,7 +548,7 @@ const SEASON_NAMES = {1:'冬', 4:'春', 7:'夏', 10:'秋'};
 function safeCreateIcons() {
     try {
         if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
-            lucide.createIcons(); 
+            lucide.createIcons();
         }
     } catch (e) {
         console.warn("图标库渲染跳过:", e);
@@ -535,7 +563,7 @@ document.addEventListener('DOMContentLoaded', () => {
             openModal('settingsModal');
         };
     }
-    
+
     // 💡 修复 1：正确获取收藏按钮元素
     const favBtn = document.getElementById('favBtn');
     if (favBtn) {
@@ -556,15 +584,25 @@ window.addEventListener('pywebviewready', async () => {
             pywebview.api.get_init_config(),
             pywebview.api.get_favorites()
         ]);
-        
-        // 💡 最终校准：以 Python 的 config.json 为准
-        const finalTheme = config.theme || 'dark';
-        document.documentElement.setAttribute('data-theme', finalTheme);
-        // 同步更新本地缓存，供下次启动“瞬时预判”使用
-        localStorage.setItem('app-theme', finalTheme);
-        
-        const iconEl = document.getElementById('themeIcon');
-        if(iconEl) iconEl.textContent = finalTheme === 'light' ? '☀️' : '🌙';
+
+        // 💡 最终校准：以 Python 的 config.json 为准 (兼容 theme_mode/theme_color 与旧 theme)
+        let mode = config.theme_mode;
+        let color = config.theme_color;
+        if (!mode || !color) {
+            const legacy = config.theme || localStorage.getItem('app-theme') || 'dark';
+            if (legacy === 'light') {
+                mode = mode || 'light';
+                color = color || 'purple';
+            } else if (['nature', 'sakura', 'sky', 'autumn'].includes(legacy)) {
+                mode = mode || 'light';
+                color = color || legacy;
+            } else {
+                mode = mode || 'dark';
+                color = color || 'purple';
+            }
+        }
+        applyThemeMode(mode, false);
+        applyThemeColor(color, false);
 
         globalFavorites = favs || [];
         fillSettings(config);
@@ -593,7 +631,7 @@ async function refreshAllData() {
                 globalBgmData = localData;
                 buildScheduleButtons();
                 renderAnimeGrid();
-                hasValidCache = true; 
+                hasValidCache = true;
             }
         }
 
@@ -628,7 +666,7 @@ async function refreshAllData() {
 // 自动计算本周的日期 (MM-DD)
 const WEEK_DATES = (() => {
     const now = new Date();
-    const mon = new Date(now); 
+    const mon = new Date(now);
     mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
     return Array.from({length: 7}, (_, i) => {
         const d = new Date(mon);
@@ -977,13 +1015,13 @@ function fillSettings(c) {
         else alToggle.classList.remove('on');
     }
     if(exePath) exePath.value = c.qbt_exe_path || '';
-    
+
     if(proxyToggle) {
         if(c.use_proxy) proxyToggle.classList.add('on');
         else proxyToggle.classList.remove('on');
     }
     if(proxyAddr) proxyAddr.value = c.proxy_address || '127.0.0.1:7890';
-    
+
     if(jpToggle) {
         if(c.only_show_japanese) jpToggle.classList.add('on');
         else jpToggle.classList.remove('on');
@@ -1006,7 +1044,7 @@ async function saveAppSettings() {
         proxy_address: document.getElementById('set_proxy_address')?.value || '127.0.0.1:7890',
         only_show_japanese: document.getElementById('set_only_jp')?.classList.contains('on') || false
     };
-    
+
     // 读取当前 RSS 源 UI 数据
     collectRssSourcesFromUI();
 
@@ -1032,9 +1070,9 @@ function openModal(id) {
         updateCacheSize();
     }
 }
-function closeModal(id) { 
+function closeModal(id) {
     const m = document.getElementById(id);
-    if(m) m.classList.remove('open'); 
+    if(m) m.classList.remove('open');
 }
 
 // 通用确认弹窗（替代浏览器原生 confirm）
@@ -1195,37 +1233,87 @@ openModal = function(id) {
     }
 };
 
-// 主题切换
-// 💡 找到这个 ID 对应的逻辑进行替换
-const themeBtn = document.getElementById('themeToggle');
+// ══════════════════════════════════════════
+//  主题系统（路线 B：亮/暗模式独立切换 + 5 套配色）
+// ══════════════════════════════════════════
+const THEME_COLORS = [
+    { id: 'purple', name: '经典紫', dot: '#7c6dfa' },
+    { id: 'nature', name: '自然绿', dot: '#38a169' },
+    { id: 'sakura', name: '樱花粉', dot: '#e06085' },
+    { id: 'sky',    name: '晴空蓝', dot: '#2e88e5' },
+    { id: 'autumn', name: '暖秋橘', dot: '#d97725' }
+];
 
-if(themeBtn) {
-    themeBtn.onclick = async () => {
-        const html = document.documentElement;
-        // 1. 判断当前状态
-        const isDark = html.getAttribute('data-theme') === 'dark';
-        const newTheme = isDark ? 'light' : 'dark';
-        
-        // 2. 瞬间切换前端 UI 属性
-        html.setAttribute('data-theme', newTheme);
-        
-        // 3. 同步更新图标（太阳/月亮）
+let currentThemeMode = document.documentElement.getAttribute('data-theme') || 'dark';
+let currentThemeColor = document.documentElement.getAttribute('data-color') || 'purple';
+
+function updateThemeUI(mode, color) {
+    if (mode) {
+        currentThemeMode = mode;
+        document.documentElement.setAttribute('data-theme', mode);
         const iconEl = document.getElementById('themeIcon');
-        if(iconEl) {
-            iconEl.textContent = isDark ? '☀️' : '🌙';
+        if (iconEl) {
+            iconEl.setAttribute('data-lucide', mode === 'light' ? 'sun' : 'moon');
+            safeCreateIcons();
         }
-        
-        // 4. 【核心升级】瞬时更新浏览器本地存储，供下次启动时脚本“预判”
-        localStorage.setItem('app-theme', newTheme);
-        
-        // 5. 【核心升级】调用 Python 接口，永久写入 config.json
-        try {
-            await pywebview.api.save_config({ "theme": newTheme });
-        } catch (e) {
-            console.error("主题配置同步至后端失败:", e);
-        }
-    };
+    }
+    if (color) {
+        currentThemeColor = color;
+        document.documentElement.setAttribute('data-color', color);
+        document.querySelectorAll('#themeColorPalette .theme-color-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.color === color);
+        });
+    }
 }
+
+function applyThemeMode(mode, persist = true) {
+    updateThemeUI(mode, null);
+    localStorage.setItem('app-theme-mode', mode);
+    if (persist && window.pywebview && pywebview.api) {
+        pywebview.api.save_config({ theme_mode: mode }).catch(e => console.error('模式保存失败:', e));
+    }
+}
+
+function applyThemeColor(color, persist = true) {
+    updateThemeUI(null, color);
+    localStorage.setItem('app-theme-color', color);
+    if (persist && window.pywebview && pywebview.api) {
+        pywebview.api.save_config({ theme_color: color }).catch(e => console.error('配色保存失败:', e));
+    }
+}
+
+function toggleThemeMode() {
+    const nextMode = currentThemeMode === 'light' ? 'dark' : 'light';
+    applyThemeMode(nextMode);
+}
+
+// 兼容旧接口
+function applyTheme(themeId, persist = true) {
+    if (themeId === 'light') {
+        applyThemeMode('light', persist);
+        applyThemeColor('purple', persist);
+    } else if (['nature', 'sakura', 'sky', 'autumn'].includes(themeId)) {
+        applyThemeMode('light', persist);
+        applyThemeColor(themeId, persist);
+    } else {
+        applyThemeMode('dark', persist);
+        applyThemeColor('purple', persist);
+    }
+}
+
+function initThemeSystem() {
+    const palette = document.getElementById('themeColorPalette');
+    if (palette) {
+        palette.innerHTML = THEME_COLORS.map(c =>
+            `<button type="button" class="theme-color-btn ${c.id === currentThemeColor ? 'active' : ''}" data-color="${c.id}" onclick="applyThemeColor('${c.id}')">` +
+            `<span class="theme-color-dot" style="background:${c.dot}"></span>` +
+            `<span>${escapeHtml(c.name)}</span></button>`
+        ).join('');
+    }
+    updateThemeUI(currentThemeMode, currentThemeColor);
+}
+
+initThemeSystem();
 
 // ══════════════════════════════════════════
 //  本地动画管理（剧集列表弹窗）

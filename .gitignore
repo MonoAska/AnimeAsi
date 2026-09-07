@@ -25,6 +25,12 @@ animeasi.db
 *.db-wal
 *.db-journal
 
+# UI acceptance fixtures (local preview only, not for runtime)
+WEB/ui_preview.html
+WEB/ui_preview_mock.js
+WEB/ui_preview_test.css
+scratch/
+
 # Packaging output
 dist/
 build/
